@@ -6,4 +6,10 @@ export default defineNuxtConfig({
       autoprefixer: {},
     },
   },
+  pages: true,
+  router: {
+    options: {
+      strict: false
+    }
+  }
 })

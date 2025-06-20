@@ -1,0 +1,5 @@
+timestamp,task_name,core_id,action
+2023-11-01T12:00:00.000Z,MemAir,0,begin
+2023-11-01T12:00:01.200Z,MemAir,0,end
+2023-11-01T12:00:02.500Z,MainAir,5,begin
+2023-11-01T12:00:03.800Z,MainAir,5,end

@@ -1,3 +1,28 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary-dark: #16302b;
+    --color-accent-text: #A3E635;
+    --color-chart-grid: #1E3D38;
+  }
+  
+  body {
+    background-color: var(--color-primary-dark);
+    color: var(--color-accent-text);
+  }
+}
+
+@layer utilities {
+  .bg-primary-dark {
+    background-color: var(--color-primary-dark);
+  }
+  .text-accent-text {
+    color: var(--color-accent-text);
+  }
+  .text-chart-grid {
+    color: var(--color-chart-grid);
+  }
+}
