@@ -4,6 +4,6 @@ import Chart from '../components/Chart.vue';
 
 <template>
   <div class="h-full">
-    <Chart csv-path="/data/tasks.csv" />
+    <Chart json-path="/data/tasks.json" />
   </div>
 </template>
