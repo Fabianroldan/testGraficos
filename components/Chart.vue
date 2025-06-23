@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 
 const chartRef = ref(null);
 const chartInstance = ref(null);
@@ -17,10 +17,14 @@ const props = defineProps({
 
 onMounted(async () => {
   isMounted.value = true;
-  
+  await loadData();
+});
+
+const loadData = async () => {
   if (process.client) {
     try {
       loading.value = true;
+      error.value = null;
       
       const { 
         Chart, 
@@ -61,6 +65,12 @@ onMounted(async () => {
       loading.value = false;
     }
   }
+};
+
+watch(() => props.jsonPath, async () => {
+  if (isMounted.value) {
+    await loadData();
+  }
 });
 
 const toggleDataset = (index) => {
@@ -77,15 +87,27 @@ const processData = ({ h, t, c, d }) => {
     segments: []
   }));
 
-  d.forEach(([taskId, action, offset]) => {
-    const time = h + offset;
-    const task = tasks[taskId];
+  // Ordenar eventos por tiempo
+  const sortedEvents = d.map(([taskId, action, offset]) => ({
+    taskId,
+    action,
+    time: h + offset
+  })).sort((a, b) => a.time - b.time);
 
-    if (action === 0) {
+  // Procesar eventos ordenados
+  sortedEvents.forEach(({ taskId, action, time }) => {
+    const task = tasks[taskId];
+    if (!task) return;
+
+    if (action === 0) { // begin
+      // Cerrar cualquier segmento abierto previo
+      const lastOpen = task.segments.find(s => !s.end);
+      if (lastOpen) lastOpen.end = time;
+      
       task.segments.push({ start: time });
-    } else {
+    } else { // end
       const last = task.segments.at(-1);
-      if (last) last.end = time;
+      if (last && !last.end) last.end = time;
     }
   });
 
@@ -93,35 +115,52 @@ const processData = ({ h, t, c, d }) => {
 };
 
 const renderChart = (Chart, tasks) => {
+  // Calcular mínimo y máximo para la escala
+  const allTimes = tasks.flatMap(t => t.segments.flatMap(s => [s.start, s.end || s.start + 100]));
+  const minTime = Math.min(...allTimes);
+  const maxTime = Math.max(...allTimes);
+
   const datasets = tasks.map(task => ({
     label: task.name,
-    data: task.segments.flatMap(seg => {
-      const duration = seg.end ? seg.end - seg.start : null;
-      return [
-        {
-          x: seg.start,
-          y: task.name,
-          custom: { duration, task: task.name.split('_')[0], core: task.name.split('_')[1] }
-        },
-        { 
-          x: seg.end || seg.start + 100, 
-          y: task.name,
-          custom: { duration, task: task.name.split('_')[0], core: task.name.split('_')[1] }
-        }
-      ];
-    }),
+    data: task.segments.map(seg => ({
+      // Punto de inicio de la barra (posición X)
+      x: seg.start,
+      y: task.name,
+      // Ancho de la barra (duración)
+      width: seg.end ? seg.end - seg.start : 100,
+      custom: {
+        duration: seg.end ? seg.end - seg.start : null,
+        task: task.name.split('_')[0],
+        core: task.name.split('_')[1],
+        startTime: seg.start,
+        endTime: seg.end || seg.start + 100
+      }
+    })),
     backgroundColor: (ctx) => {
-      const duration = ctx.raw?.custom?.duration;
-      return duration !== undefined && duration !== null ? 
-        `${task.color}CC` : '#FF000080';
+      const custom = ctx.raw?.custom || {};
+      if (!custom.duration) return '#FF000080';
+      
+      // Color por tipo de tarea
+      const colorMap = {
+        'Mem': '#A3E635',
+        'Main': '#10B981',
+        'Cache': '#34D399',
+        'DB': '#3B82F6',
+        'Net': '#8B5CF6'
+      };
+      return colorMap[custom.task] || '#6EE7B7';
     },
     borderColor: (ctx) => {
-      const duration = ctx.raw?.custom?.duration;
-      return duration !== undefined && duration !== null ? 
-        task.color : '#FF0000';
+      const custom = ctx.raw?.custom || {};
+      if (!custom.duration) return '#FF0000';
+      return ctx.dataset.backgroundColor(ctx);
     },
     borderWidth: 1,
-    barThickness: 12,
+    // Configuración clave para mostrar solo la franja activa
+    barPercentage: 1.0,
+    categoryPercentage: 1.0,
+    barThickness: 'flex',
+    minBarLength: 2,
     borderRadius: 4,
     borderSkipped: false
   }));
@@ -140,12 +179,11 @@ const renderChart = (Chart, tasks) => {
       scales: {
         x: {
           type: 'linear',
-          min: 0,
-          max: 12000,
+          min: minTime,
+          max: maxTime,
           ticks: {
-            stepSize: 500,
             color: '#A3E635',
-            callback: v => `${(v / 1000).toFixed(1)}s`
+            callback: v => `${((v - minTime) / 1000).toFixed(2)}s`
           },
           grid: {
             color: '#1E3D38',
@@ -154,6 +192,7 @@ const renderChart = (Chart, tasks) => {
         },
         y: {
           type: 'category',
+          offset: true,
           grid: {
             color: '#1E3D38',
             drawBorder: false
@@ -190,15 +229,33 @@ const renderChart = (Chart, tasks) => {
           borderColor: '#10B981',
           borderWidth: 1,
           callbacks: {
+            beforeLabel: (ctx) => {
+              const custom = ctx.raw?.custom || {};
+              const start = ((custom.startTime - minTime) / 1000).toFixed(3);
+              const end = custom.endTime ? ((custom.endTime - minTime) / 1000).toFixed(3) : 'En curso';
+              return [
+                `Inicio: ${start}s`,
+                `Fin: ${end}s`,
+                `Duración: ${custom.duration ? (custom.duration / 1000).toFixed(3) + 's' : 'N/A'}`
+              ];
+            },
             label: (ctx) => {
               const custom = ctx.raw?.custom || {};
               return [
-                `Duración: ${custom.duration || 'N/A'}ms`,
-                `Core: ${custom.core || 'N/A'}`,
-                `Tipo: ${custom.task || 'N/A'}`
+                `Tarea: ${custom.task || 'N/A'}`,
+                `Core: ${custom.core || 'N/A'}`
               ];
             }
           }
+        },
+        legend: {
+          display: false
+        }
+      },
+      // Configuración clave para el posicionamiento de barras
+      datasetOptions: {
+        bar: {
+          base: minTime // Establece el punto base para las barras
         }
       }
     }
