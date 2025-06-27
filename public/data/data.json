@@ -1,0 +1,277 @@
+[
+  {
+    "name": "Main_witness",
+    "start": 7540696,
+    "duration": 177380
+  },
+  {
+    "name": "Main_witness",
+    "start": 7732041,
+    "duration": 432335
+  },
+  {
+    "name": "Main_witness",
+    "start": 9877685,
+    "duration": 421960
+  },
+  {
+    "name": "Main_witness",
+    "start": 11976019,
+    "duration": 468994
+  },
+  {
+    "name": "Main_witness",
+    "start": 14125791,
+    "duration": 429573
+  },
+  {
+    "name": "Main_witness",
+    "start": 16212950,
+    "duration": 422521
+  },
+  {
+    "name": "Main_witness",
+    "start": 18328416,
+    "duration": 398335
+  },
+  {
+    "name": "Main_witness",
+    "start": 20490567,
+    "duration": 912434
+  },
+  {
+    "name": "ROM_DATA_collect",
+    "start": 22691458,
+    "duration": 87
+  },
+  {
+    "name": "ROM_DATA_witness",
+    "start": 22807424,
+    "duration": 186
+  },
+  {
+    "name": "INPUT_DATA_collect",
+    "start": 24701931,
+    "duration": 129
+  },
+  {
+    "name": "INPUT_DATA_witness",
+    "start": 24861463,
+    "duration": 105
+  },
+  {
+    "name": "MEM_collect",
+    "start": 25007284,
+    "duration": 254
+  },
+  {
+    "name": "MEM_witness",
+    "start": 25290036,
+    "duration": 590
+  },
+  {
+    "name": "MEM_collect",
+    "start": 25949048,
+    "duration": 127
+  },
+  {
+    "name": "MEM_witness",
+    "start": 26132835,
+    "duration": 654
+  },
+  {
+    "name": "MEM_collect",
+    "start": 26848355,
+    "duration": 215
+  },
+  {
+    "name": "MEM_witness",
+    "start": 27084944,
+    "duration": 629
+  },
+  {
+    "name": "MEM_ALIGN_collect",
+    "start": 27771948,
+    "duration": 169
+  },
+  {
+    "name": "MEM_ALIGN_witness",
+    "start": 27970921,
+    "duration": 1215
+  },
+  {
+    "name": "MEM_ALIGN_collect",
+    "start": 29250012,
+    "duration": 143
+  },
+  {
+    "name": "MEM_ALIGN_witness",
+    "start": 29422015,
+    "duration": 1301
+  },
+  {
+    "name": "MEM_ALIGN_ROM_witness",
+    "start": 30789275,
+    "duration": 33298
+  },
+  {
+    "name": "ROM_collect",
+    "start": 31697976,
+    "duration": 185
+  },
+  {
+    "name": "ROM_witness",
+    "start": 31902095,
+    "duration": 265
+  },
+  {
+    "name": "BINARY_EXTENSION_collect",
+    "start": 32190948,
+    "duration": 67
+  },
+  {
+    "name": "BINARY_EXTENSION_witness",
+    "start": 32282754,
+    "duration": 581
+  },
+  {
+    "name": "BINARY_EXTENSION_TABLE_witness",
+    "start": 32934959,
+    "duration": 45771
+  },
+  {
+    "name": "BINARY_ADD_collect",
+    "start": 33640759,
+    "duration": 99
+  },
+  {
+    "name": "BINARY_ADD_witness",
+    "start": 33778531,
+    "duration": 737
+  },
+  {
+    "name": "BINARY_ADD_collect",
+    "start": 34569832,
+    "duration": 90
+  },
+  {
+    "name": "BINARY_ADD_witness",
+    "start": 34679656,
+    "duration": 667
+  },
+  {
+    "name": "BINARY_collect",
+    "start": 35394954,
+    "duration": 116
+  },
+  {
+    "name": "BINARY_witness",
+    "start": 35532144,
+    "duration": 241
+  },
+  {
+    "name": "BINARY_collect",
+    "start": 35926129,
+    "duration": 44
+  },
+  {
+    "name": "BINARY_witness",
+    "start": 36022174,
+    "duration": 440
+  },
+  {
+    "name": "BINARY_TABLE_witness",
+    "start": 37211834,
+    "duration": 92400
+  },
+  {
+    "name": "ARITH_collect",
+    "start": 38347777,
+    "duration": 189
+  },
+  {
+    "name": "ARITH_witness",
+    "start": 38549499,
+    "duration": 192
+  },
+  {
+    "name": "ARITH_TABLE_witness",
+    "start": 38966270,
+    "duration": 3607
+  },
+  {
+    "name": "ARITH_RANGE_TABLE_witness",
+    "start": 39795947,
+    "duration": 40511
+  },
+  {
+    "name": "KECCAKF_collect",
+    "start": 39875108,
+    "duration": 40
+  },
+  {
+    "name": "KECCAKF_witness",
+    "start": 39976240,
+    "duration": 406
+  },
+  {
+    "name": "KECCAKF_collect",
+    "start": 40436283,
+    "duration": 25
+  },
+  {
+    "name": "KECCAKF_witness",
+    "start": 40528830,
+    "duration": 1183
+  },
+  {
+    "name": "KECCAKF_collect",
+    "start": 44718232,
+    "duration": 233
+  },
+  {
+    "name": "KECCAKF_witness",
+    "start": 44972340,
+    "duration": 1002
+  },
+  {
+    "name": "KECCAKF_collect",
+    "start": 48901357,
+    "duration": 44
+  },
+  {
+    "name": "KECCAKF_witness",
+    "start": 48978201,
+    "duration": 908
+  },
+  {
+    "name": "KECCAKF_collect",
+    "start": 52902278,
+    "duration": 42
+  },
+  {
+    "name": "KECCAKF_witness",
+    "start": 52983111,
+    "duration": 654
+  },
+  {
+    "name": "KECCAKF_TABLE_witness",
+    "start": 56941821,
+    "duration": 117029
+  },
+  {
+    "name": "ARITH_EQ_collect",
+    "start": 60715707,
+    "duration": 90
+  },
+  {
+    "name": "ARITH_EQ_witness",
+    "start": 60823873,
+    "duration": 472
+  },
+  {
+    "name": "ARITH_EQ_LT_TABLE_witness",
+    "start": 61362834,
+    "duration": 48521
+  }
+]
