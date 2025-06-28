@@ -1,12 +1,16 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
+import ChartLegend from './ChartLegend.vue';
 
 const chartRef = ref(null);
 const chartInstance = ref(null);
 const loading = ref(true);
 const error = ref(null);
 const isMounted = ref(false);
-const legendFilter = ref('');
+
+const chartData = computed(() => {
+  return chartInstance.value?.data?.datasets?.[0]?.data || [];
+});
 
 const props = defineProps({
   jsonPath: {
@@ -14,16 +18,6 @@ const props = defineProps({
     required: true,
     validator: value => value.startsWith('/data/')
   }
-});
-
-const filteredLegendItems = computed(() => {
-  if (!chartInstance.value?.data?.datasets) return [];
-  if (!legendFilter.value) return chartInstance.value.data.datasets;
-  
-  return chartInstance.value.data.datasets.filter(dataset => 
-    dataset.label.toLowerCase().includes(legendFilter.value.toLowerCase()) ||
-    dataset.originalName.toLowerCase().includes(legendFilter.value.toLowerCase())
-  );
 });
 
 onMounted(async () => {
@@ -80,22 +74,12 @@ watch(() => props.jsonPath, async () => {
   }
 });
 
-const toggleDataset = (index) => {
-  if (!chartInstance.value) return;
-  
-  const meta = chartInstance.value.getDatasetMeta(index);
-  meta.hidden = meta.hidden === null ? !chartInstance.value.data.datasets[index].hidden : !meta.hidden;
-  
-  chartInstance.value.update();
-};
-
 const processData = (rawData) => {
-  const tasks = [];
-  
-  rawData.forEach((item, index) => {
-    const displayName = `${item.name.split('[')[0]}[${index}]`;
-    
-    tasks.push({
+  const nameCounts = {};
+  return rawData.map((item) => {
+    const count = nameCounts[item.name] = (nameCounts[item.name] || 0) + 1;
+    const displayName = `${item.name}[${count}]`;
+    return {
       name: displayName,
       originalName: item.name,
       originalData: item,
@@ -104,12 +88,9 @@ const processData = (rawData) => {
         start: item.start,
         end: item.start + item.duration,
         duration: item.duration
-      }],
-      originalIndex: index  // Guardamos el índice aquí
-    });
+      }]
+    };
   });
-
-  return tasks;
 };
 
 const getColorForTask = (taskName) => {
@@ -136,39 +117,28 @@ const renderChart = (Chart, tasks) => {
   const minTime = Math.min(...allTimes);
   const maxTime = Math.max(...allTimes);
 
-  const datasets = tasks.map(task => ({
-    label: task.name,
-    originalName: task.originalName,
-    originalData: task.originalData,
-    data: task.segments.map(seg => ({
-      x: seg.start,
-      y: task.name,
-      width: seg.end - seg.start,
-      custom: {
-        ...task.originalData,
-        duration: seg.end - seg.start,
-        task: task.originalName.split('_')[0],
-        subtask: task.originalName.split('_')[1] || '',
-        startTime: seg.start,
-        endTime: seg.end,
-        formattedStart: formatTime(seg.start),
-        formattedEnd: formatTime(seg.end),
-        formattedDuration: formatTime(seg.end - seg.start),
-        formattedRelativeStart: formatTime(seg.start - minTime),
-        formattedRelativeEnd: formatTime(seg.end - minTime),
-        originalIndex: task.originalIndex  // Usamos el índice guardado
-      }
-    })),
+  const data = tasks.map(task => ({
+    x: task.segments[0].start,
+    y: task.name,
     backgroundColor: task.color + 'CC',
     borderColor: task.color,
-    borderWidth: 1,
-    barPercentage: 1.0,
-    categoryPercentage: 1.0,
-    barThickness: 12,
-    borderRadius: 4,
-    borderSkipped: false,
-    hidden: false
+    width: task.segments[0].duration,
+    custom: {
+      ...task.originalData,
+      duration: task.segments[0].duration,
+      task: task.originalName.split('_')[0],
+      subtask: task.originalName.split('_')[1] || '',
+      startTime: task.segments[0].start,
+      endTime: task.segments[0].end,
+      formattedStart: formatTime(task.segments[0].start),
+      formattedEnd: formatTime(task.segments[0].end),
+      formattedDuration: formatTime(task.segments[0].duration),
+      formattedRelativeStart: formatTime(task.segments[0].start - minTime),
+      formattedRelativeEnd: formatTime(task.segments[0].end - minTime)
+    }
   }));
+
+  const yLabels = tasks.map(task => task.name);
 
   if (chartInstance.value) {
     chartInstance.value.destroy();
@@ -176,41 +146,92 @@ const renderChart = (Chart, tasks) => {
 
   chartInstance.value = new Chart(chartRef.value, {
     type: 'bar',
-    data: { datasets },
+    data: {
+      labels: yLabels,
+      datasets: [{
+        label: 'Tareas',
+        data,
+        backgroundColor: data.map(d => d.backgroundColor),
+        borderColor: data.map(d => d.borderColor),
+        borderWidth: 1,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+        barThickness: 18,
+        borderRadius: 4,
+        borderSkipped: false,
+        hidden: false
+      }]
+    },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       indexAxis: 'y',
+      parsing: {
+        xAxisKey: 'x',
+        yAxisKey: 'y',
+        widthKey: 'width'
+      },
       scales: {
         x: {
           type: 'linear',
           min: minTime,
           max: maxTime,
-          ticks: {
+          display: true,
+          title: {
+            display: true,
+            text: 'Tiempo (Microsegundos)',
             color: '#A3E635',
+            font: {
+              size: 12,
+              weight: 'bold'
+            }
+          },
+          ticks: {
+            display: true,
+            color: '#A3E635',
+            font: {
+              size: 10,
+              weight: 'normal'
+            },
+            maxTicksLimit: 10,
             callback: v => `${((v - minTime) / 1000000).toFixed(2)}ms`
           },
           grid: {
+            display: true,
             color: '#1E3D38',
-            drawBorder: false
+            drawBorder: true,
+            borderColor: '#A3E635'
           }
         },
         y: {
           type: 'category',
+          labels: yLabels,
           offset: true,
+          display: true,
+          title: {
+            display: true,
+            color: '#A3E635',
+            font: {
+              size: 12,
+              weight: 'bold'
+            }
+          },
           grid: {
+            display: true,
             color: '#1E3D38',
-            drawBorder: false
+            drawBorder: true,
+            borderColor: '#A3E635'
           },
           ticks: {
+            display: true,
             color: '#A3E635',
             font: {
               weight: 'bold',
               size: 10
             },
-            callback: function(value) {
-              return value;
-            }
+            autoSkip: false,
+            mirror: false,
+            padding: 5
           }
         }
       },
@@ -227,7 +248,7 @@ const renderChart = (Chart, tasks) => {
             beforeLabel: (ctx) => {
               const custom = ctx.raw?.custom || {};
               return [
-                `Nombre completo: ${ctx.dataset.label}`,
+                `Nombre: ${ctx.raw.y}`,
                 `Tipo: ${custom.task}`,
                 `Subtipo: ${custom.subtask || 'N/A'}`
               ];
@@ -237,7 +258,7 @@ const renderChart = (Chart, tasks) => {
               return [
                 `Inicio: ${custom.formattedStart}`,
                 `Fin: ${custom.formattedEnd}`,
-                `Duración: ${custom.formattedDuration} (${((custom.duration) / 1000000).toFixed(3)}ms)`
+                `Duración: ${((custom.duration) / 1000000).toFixed(3)}ms (${custom.duration.toLocaleString()}μs)`
               ];
             }
           }
@@ -249,10 +270,15 @@ const renderChart = (Chart, tasks) => {
     }
   });
 
+  // Ajustar la altura del canvas para que quepa en pantalla
   const chartContainer = chartRef.value.parentElement;
-  chartContainer.style.overflowY = 'auto';
-  chartContainer.style.height = '70vh';
-  chartRef.value.style.height = `${datasets.length * 20 + 100}px`;
+  const availableHeight = window.innerHeight - 200; // Restamos espacio para la leyenda
+  const barHeight = 18; // Altura de cada barra
+  const totalHeight = Math.max(tasks.length * barHeight, 300);
+  
+  chartContainer.style.height = `${Math.min(availableHeight, totalHeight)}px`;
+  chartRef.value.style.height = '100%';
+  chartRef.value.style.width = '100%';
 };
 
 onUnmounted(() => {
@@ -263,7 +289,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="relative h-full w-full bg-primary-dark">
+  <div class="flex flex-col h-screen w-full bg-primary-dark">
     <!-- Estado de carga -->
     <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-primary-dark/90 z-10">
       <div class="animate-pulse text-accent-text">Cargando datos...</div>
@@ -277,14 +303,14 @@ onUnmounted(() => {
       {{ error }}
     </div>
 
-    <!-- Contenedor del gráfico con scroll -->
-    <div class="p-4 h-[70vh] min-h-[500px] overflow-y-auto">
+    <!-- Contenedor del gráfico -->
+    <div class="flex-1 p-4 overflow-hidden">
       <ClientOnly>
-        <div class="min-h-full">
+        <div class="h-full w-full">
           <canvas 
             v-if="isMounted" 
             ref="chartRef" 
-            class="w-full"
+            class="w-full h-full"
             :class="{ 'opacity-50': loading }" 
           />
         </div>
@@ -296,33 +322,10 @@ onUnmounted(() => {
       </ClientOnly>
     </div>
 
-    <!-- Leyenda interactiva -->
-    <div v-if="isMounted && chartInstance?.data?.datasets" class="absolute bottom-4 left-4 right-4 flex flex-col gap-1 max-h-[30vh] overflow-y-auto p-2 bg-primary-dark/90 rounded-lg border border-accent-border backdrop-blur-sm">
-      <div class="sticky top-0 bg-primary-dark/90 py-1 z-10">
-        <input 
-          type="text" 
-          v-model="legendFilter"
-          placeholder="Filtrar tareas..."
-          class="w-full px-2 py-1 bg-primary-darker text-accent-text rounded border border-accent-border focus:outline-none focus:ring-1 focus:ring-accent-border"
-        />
-      </div>
-      <div 
-        v-for="(task, i) in filteredLegendItems" 
-        :key="i"
-        class="flex items-center text-xs cursor-pointer hover:bg-primary-darker/50 px-2 py-1 rounded"
-        @click="toggleDataset(i)"
-      >
-        <div 
-          class="w-3 h-3 mr-2 rounded-sm flex-shrink-0"
-          :style="{ backgroundColor: task.hidden ? '#6B7280' : task.backgroundColor }" 
-        />
-        <span class="truncate" :class="{ 'text-gray-400': task.hidden }">
-          {{ task.label }}
-        </span>
-        <span class="ml-auto text-accent-text/70 text-xxs">
-          {{ ((task.data[0].custom.duration) / 1000000).toFixed(2) }}ms
-        </span>
-      </div>
-    </div>
+    <!-- Leyenda visual -->
+    <ChartLegend 
+      v-if="isMounted && chartData.length > 0"
+      :chart-data="chartData"
+    />
   </div>
 </template>
