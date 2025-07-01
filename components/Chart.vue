@@ -8,9 +8,7 @@ const loading = ref(true);
 const error = ref(null);
 const isMounted = ref(false);
 
-const chartData = computed(() => {
-  return chartInstance.value?.data?.datasets?.[0]?.data || [];
-});
+const chartData = computed(() => chartInstance.value?.data?.datasets?.[0]?.data || []);
 
 const props = defineProps({
   jsonPath: {
@@ -26,39 +24,19 @@ onMounted(async () => {
 });
 
 const loadData = async () => {
+  loading.value = true;
+  error.value = null;
   try {
-    loading.value = true;
-    error.value = null;
-
-    const {
-      Chart,
-      BarController,
-      BarElement,
-      LinearScale,
-      CategoryScale,
-      Tooltip,
-      Title
-    } = await import('chart.js');
-
-    Chart.register(
-      BarController,
-      BarElement,
-      LinearScale,
-      CategoryScale,
-      Tooltip,
-      Title
-    );
-
+    const ChartJS = await import('chart.js');
+    const { Chart, BarController, BarElement, LinearScale, CategoryScale, Tooltip, Title } = ChartJS;
+    const annotationPlugin = await import('chartjs-plugin-annotation');
+    Chart.register(BarController, BarElement, LinearScale, CategoryScale, Tooltip, Title);
+    Chart.register(annotationPlugin.default);
     const response = await fetch(props.jsonPath);
     if (!response.ok) throw new Error('Error al cargar archivo');
-
     const data = await response.json();
     const tasks = processData(data);
-
-    if (tasks.length === 0) {
-      throw new Error('No hay datos válidos en el JSON');
-    }
-
+    if (!tasks.length) throw new Error('No hay datos válidos en el JSON');
     renderChart(Chart, tasks);
   } catch (err) {
     error.value = err.message;
@@ -69,16 +47,14 @@ const loadData = async () => {
 };
 
 watch(() => props.jsonPath, async () => {
-  if (isMounted.value) {
-    await loadData();
-  }
+  if (isMounted.value) await loadData();
 });
 
 const processData = (rawData) => {
   const nameCounts = {};
   return rawData.map((item) => {
     const count = nameCounts[item.name] = (nameCounts[item.name] || 0) + 1;
-    const displayName = `${item.name}[${count}]`;
+    const displayName = `${item.name}[${count}] - ${formatTime(item.duration)} microsegundos`;
     const colorScheme = getColorForTask(item.name);
     return {
       name: displayName,
@@ -118,14 +94,14 @@ const getColorForTask = (taskName) => {
       border: '#22C55E'
     },
     'BINARY': {
-      primary: '#BE185D',
-      secondary: '#9D174D',
-      border: '#EC4899'
-    },
-    'ARITH': {
       primary: '#C2410C',
       secondary: '#9A3412',
       border: '#F97316'
+    },
+    'ARITH': {
+      primary: '#0EA5E9',
+      secondary: '#0369A1',
+      border: '#38BDF8'
     },
     'KECCAKF': {
       primary: '#B91C1C',
@@ -146,32 +122,41 @@ const formatTime = (time) => {
 };
 
 const renderChart = (Chart, tasks) => {
+  // Usar valores absolutos en segundos para el eje x
   const allTimes = tasks.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
   const minTime = Math.min(...allTimes);
   const maxTime = Math.max(...allTimes);
 
+  // Convertir a segundos y calcular el rango
+  const minTimeSec = minTime / 1_000_000;
+  const maxTimeSec = maxTime / 1_000_000;
+  const timeRange = maxTimeSec - minTimeSec;
+
+  // Ajustar el rango mínimo para asegurar que las barras sean visibles
+  const adjustedMaxTime = timeRange < 0.001 ? minTimeSec + 0.001 : maxTimeSec;
+
   const data = tasks.map(task => {
     const colorScheme = task.colorScheme;
+    const startSec = task.segments[0].start / 1_000_000;
+    const endSec = task.segments[0].end / 1_000_000;
+    const durationSec = task.segments[0].duration / 1_000_000;
     return {
-      x: task.segments[0].start,
+      x: [startSec, endSec],
       y: task.name,
       backgroundColor: colorScheme.primary + 'E6',
       borderColor: colorScheme.border,
       hoverBackgroundColor: colorScheme.primary + 'F2',
       hoverBorderColor: colorScheme.secondary,
-      width: task.segments[0].duration,
       custom: {
         ...task.originalData,
-        duration: task.segments[0].duration,
+        duration: durationSec,
         task: task.originalName.split('_')[0],
         subtask: task.originalName.split('_')[1] || '',
-        startTime: task.segments[0].start,
-        endTime: task.segments[0].end,
-        formattedStart: formatTime(task.segments[0].start),
-        formattedEnd: formatTime(task.segments[0].end),
-        formattedDuration: formatTime(task.segments[0].duration),
-        formattedRelativeStart: formatTime(task.segments[0].start - minTime),
-        formattedRelativeEnd: formatTime(task.segments[0].end - minTime)
+        absoluteStartTime: startSec,
+        absoluteEndTime: endSec,
+        formattedDuration: durationSec.toFixed(6) + 's',
+        formattedAbsoluteStart: startSec.toFixed(6) + 's',
+        formattedAbsoluteEnd: endSec.toFixed(6) + 's'
       }
     };
   });
@@ -192,10 +177,11 @@ const renderChart = (Chart, tasks) => {
         backgroundColor: data.map(d => d.backgroundColor),
         borderColor: data.map(d => d.borderColor),
         borderWidth: 1,
-        barPercentage: 0.95, // Barras más grandes
-        categoryPercentage: 0.95, // Más espacio para las barras
-        borderRadius: 2, // Menos redondeado
-        borderSkipped: false
+        barPercentage: 0.95,
+        categoryPercentage: 0.95,
+        borderRadius: 2,
+        borderSkipped: false,
+        minBarLength: 5
       }]
     },
     options: {
@@ -204,27 +190,27 @@ const renderChart = (Chart, tasks) => {
       indexAxis: 'y',
       parsing: {
         xAxisKey: 'x',
-        yAxisKey: 'y',
-        widthKey: 'width'
+        yAxisKey: 'y'
       },
       layout: {
         padding: {
           top: 20,
-          bottom: 20
+          bottom: 20,
+          right: 30 // Añadir un poco de padding derecho
         }
       },
       scales: {
         x: {
           type: 'linear',
-          min: minTime,
-          max: maxTime,
+          min: 0,
+          max: adjustedMaxTime + 0.5,
           display: true,
           title: {
             display: true,
-            text: 'Tiempo (Microsegundos)',
+            text: 'Tiempo absoluto (segundos)',
             color: '#FFFFFF',
             font: {
-              size: 15,
+              size: 13,
               weight: '600',
               family: 'Inter, system-ui, sans-serif'
             }
@@ -233,16 +219,22 @@ const renderChart = (Chart, tasks) => {
             display: true,
             color: '#FFFFFF',
             font: {
-              size: 13,
+              size: 11,
               weight: '500',
               family: 'Inter, system-ui, sans-serif'
             },
-            maxTicksLimit: 8,
-            callback: v => `${((v - minTime) / 1000000).toFixed(2)}ms`
+            maxTicksLimit: 10,
+            callback: v => {
+              if (timeRange < 0.001) return `${v.toFixed(6)}s`;
+              if (timeRange < 0.01) return `${v.toFixed(5)}s`;
+              if (timeRange < 0.1) return `${v.toFixed(4)}s`;
+              if (timeRange < 1) return `${v.toFixed(3)}s`;
+              return `${v.toFixed(2)}s`;
+            }
           },
           grid: {
             display: true,
-            color: 'rgba(100, 116, 139, 0.15)', // Líneas de grid muy sutiles
+            color: 'rgba(100, 116, 139, 0.15)',
             drawBorder: true,
             borderColor: '#475569',
             borderWidth: 1,
@@ -256,17 +248,16 @@ const renderChart = (Chart, tasks) => {
           display: true,
           title: {
             display: true,
-            text: 'Tareas',
             color: '#FFFFFF',
             font: {
-              size: 15,
+              size: 13,
               weight: '600',
               family: 'Inter, system-ui, sans-serif'
             }
           },
           grid: {
             display: true,
-            color: 'rgba(100, 116, 139, 0.1)', // Líneas horizontales muy sutiles
+            color: 'rgba(100, 116, 139, 0.1)',
             drawBorder: true,
             borderColor: '#475569',
             borderWidth: 1,
@@ -274,24 +265,24 @@ const renderChart = (Chart, tasks) => {
           },
           ticks: {
             display: true,
-            color: '#FFFFFF',
+            color: '#A3E635',
             font: {
               weight: '500',
-              size: 13,
+              size: 11,
               family: 'Inter, system-ui, sans-serif'
             },
             autoSkip: false,
             mirror: false,
-            padding: 15
+            padding: 12
           },
         }
       },
       plugins: {
         tooltip: {
-          backgroundColor: 'rgba(51, 65, 85, 0.96)', // Slate 700 con alta opacidad
-          titleColor: '#F8FAFC', // Slate 50
-          bodyColor: '#E2E8F0', // Slate 200
-          borderColor: '#64748B', // Slate 500
+          backgroundColor: 'rgba(51, 65, 85, 0.96)',
+          titleColor: '#F8FAFC',
+          bodyColor: '#E2E8F0',
+          borderColor: '#64748B',
           borderWidth: 1,
           padding: 16,
           bodySpacing: 8,
@@ -310,67 +301,66 @@ const renderChart = (Chart, tasks) => {
             family: 'Inter, system-ui, sans-serif'
           },
           callbacks: {
-            beforeLabel: (ctx) => {
-              const custom = ctx.raw?.custom || {};
-              return [
-                `Nombre: ${ctx.raw.y}`,
-                `Tipo: ${custom.task}`,
-                `Subtipo: ${custom.subtask || 'N/A'}`
-              ];
-            },
             label: (ctx) => {
               const custom = ctx.raw?.custom || {};
               return [
-                `Inicio: ${custom.formattedStart}`,
-                `Fin: ${custom.formattedEnd}`,
-                `Duración: ${((custom.duration) / 1000000).toFixed(3)}ms (${custom.duration.toLocaleString()}μs)`
+                `Inicio: ${custom.formattedAbsoluteStart}`,
+                `Final: ${custom.formattedAbsoluteEnd}`,
+                `Duración: ${custom.formattedDuration}`,
               ];
             }
           }
         },
         legend: {
           display: false
+        },
+        annotation: {
+          annotations: {
+            maxTimeLine: {
+              type: 'line',
+              xMin: adjustedMaxTime,
+              xMax: adjustedMaxTime,
+              borderColor: '#EF4444',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              label: {
+                display: true,
+                content: `Tiempo total: ${adjustedMaxTime.toFixed(6)}s`,
+                position: 'end',
+                backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                color: '#FFFFFF',
+                font: {
+                  size: 11,
+                  weight: '600'
+                },
+                padding: 4,
+                cornerRadius: 4
+              }
+            }
+          }
         }
       }
     }
   });
 
-  // Ajustar la altura del canvas para que sea mucho más grande
   const chartContainer = chartRef.value.parentElement;
-  const availableHeight = window.innerHeight - 200; // Usar casi toda la altura disponible
-  const barHeight = 40; // Barras más altas y prominentes
-  const spacing = 6; // Menos espaciado para barras más grandes
-  const totalHeight = Math.max(tasks.length * (barHeight + spacing), 600); // Altura mínima mucho mayor
+  const availableHeight = window.innerHeight - 200;
+  const barHeight = 40;
+  const spacing = 6;
+  const totalHeight = Math.max(tasks.length * (barHeight + spacing), 600);
 
-  chartContainer.style.height = `${availableHeight + 150}px`; // Espacio extra para ejes
+  chartContainer.style.height = `${availableHeight + 150}px`;
   chartRef.value.style.height = `${totalHeight}px`;
-  chartRef.value.style.width = '50%';
-
-  // Añadir sombra sutil y profesional
-  chartContainer.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04)';
-  chartContainer.style.borderRadius = '8px';
-  chartContainer.style.overflow = 'hidden';
+  chartRef.value.style.width = '80%'; // Aumentar el ancho para mostrar mejor las barras
 };
 
 onUnmounted(() => {
-  if (chartInstance.value) {
-    chartInstance.value.destroy();
-  }
+  if (chartInstance.value) chartInstance.value.destroy();
 });
 </script>
 
 <template>
   <div class="min-h-screen w-full bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100">
-    <!-- Estado de carga -->
-    <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/95 backdrop-blur-sm z-50">
-      <div class="text-center">
-        <div class="animate-spin w-10 h-10 border-3 border-slate-300 border-t-slate-600 rounded-full mx-auto mb-4">
-        </div>
-        <div class="text-slate-700 text-lg font-medium">Cargando datos...</div>
-      </div>
-    </div>
-
-    <!-- Mensaje de error -->
     <div v-if="error"
       class="absolute top-6 left-1/2 transform -translate-x-1/2 bg-red-50 text-red-800 px-6 py-3 rounded-lg border border-red-200 shadow-sm z-50">
       <div class="flex items-center gap-2">
@@ -383,9 +373,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Contenedor principal -->
     <div class="flex flex-col min-h-screen">
-      <!-- Gráfico con mucho más espacio -->
       <div class="flex-1 px-6 py-4 pb-8">
         <div class="max-w-7xl mx-auto">
           <ClientOnly>
@@ -406,10 +394,10 @@ onUnmounted(() => {
           </ClientOnly>
         </div>
       </div>
+    </div>
 
-      <div class="w-full px-6 pt-20 pb-8">
-        <ChartLegend v-if="isMounted && chartData.length > 0" :chart-data="chartData" />
-      </div>
+    <div class="w-full px-6 pt-20 pb-8">
+      <ChartLegend v-if="isMounted && chartData.length > 0" :chart-data="chartData" />
     </div>
   </div>
 </template>
