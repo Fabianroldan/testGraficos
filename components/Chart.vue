@@ -205,7 +205,7 @@ const renderChart = (Chart, tasks) => {
           title: {
             display: true,
             text: 'Tiempo absoluto (minutos)',
-            color: '#FFFFFF',
+            color: '#A3E635',
             font: {
               size: 13,
               weight: '600',
@@ -214,7 +214,7 @@ const renderChart = (Chart, tasks) => {
           },
           ticks: {
             display: true,
-            color: '#FFFFFF',
+            color: '#A3E635',
             font: {
               size: 11,
               weight: '500',
@@ -233,9 +233,9 @@ const renderChart = (Chart, tasks) => {
           },
           grid: {
             display: true,
-            color: 'rgba(100, 116, 139, 0.15)',
+            color: 'var(--color-chart-grid)',
             drawBorder: true,
-            borderColor: '#475569',
+            borderColor: 'var(--color-primary-dark)',
             borderWidth: 1,
             lineWidth: 0.5
           }
@@ -247,7 +247,7 @@ const renderChart = (Chart, tasks) => {
           display: true,
           title: {
             display: true,
-            color: '#FFFFFF',
+            color: '#A3E635',
             font: {
               size: 13,
               weight: '600',
@@ -256,9 +256,9 @@ const renderChart = (Chart, tasks) => {
           },
           grid: {
             display: true,
-            color: 'rgba(100, 116, 139, 0.1)',
+            color: 'var(--color-chart-grid)',
             drawBorder: true,
-            borderColor: '#475569',
+            borderColor: 'var(--color-primary-dark)',
             borderWidth: 1,
             lineWidth: 0.5
           },
@@ -278,10 +278,10 @@ const renderChart = (Chart, tasks) => {
       },
       plugins: {
         tooltip: {
-          backgroundColor: 'rgba(51, 65, 85, 0.96)',
-          titleColor: '#F8FAFC',
+          backgroundColor: 'var(--color-primary-dark)',
+          titleColor: '#A3E635',
           bodyColor: '#E2E8F0',
-          borderColor: '#64748B',
+          borderColor: 'var(--color-chart-grid)',
           borderWidth: 1,
           padding: 16,
           bodySpacing: 8,
@@ -359,7 +359,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen w-full bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100">
+  <div class="min-h-screen w-full bg-primary-dark flex flex-col">
+    <!-- Mensaje de error -->
     <div v-if="error"
       class="absolute top-6 left-1/2 transform -translate-x-1/2 bg-red-50 text-red-800 px-6 py-3 rounded-lg border border-red-200 shadow-sm z-50">
       <div class="flex items-center gap-2">
@@ -372,30 +373,32 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="flex flex-col min-h-screen">
-      <div class="flex-1 px-6 py-4 pb-8">
-        <div class="max-w-7xl mx-auto">
-          <ClientOnly>
-            <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-8">
-              <canvas v-if="isMounted" ref="chartRef" class="w-full h-full transition-opacity duration-300"
-                :class="{ 'opacity-50': loading }" />
-            </div>
-            <template #fallback>
-              <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-12 flex items-center justify-center">
-                <div class="text-center">
-                  <div
-                    class="animate-spin w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full mx-auto mb-4">
-                  </div>
-                  <p class="text-slate-600">Cargando visualización...</p>
-                </div>
+    <!-- Contenedor principal del gráfico -->
+    <div class="flex-1 w-full px-4 py-8">
+      <div class="max-w-[95vw] mx-auto">
+        <ClientOnly>
+          <div class="rounded-lg border border-slate-200 shadow-sm p-4 w-full h-[80vh] min-h-[600px] mx-auto flex items-center justify-center bg-[#1E3D38]">
+            <canvas 
+              v-if="isMounted" 
+              ref="chartRef" 
+              class="w-full h-full transition-opacity duration-300 text-accent-text"
+              :class="{ 'opacity-50': loading }" 
+            />
+          </div>
+          <template #fallback>
+            <div class="rounded-lg border border-slate-200 shadow-sm h-[80vh] min-h-[600px] flex items-center justify-center bg-[#1E3D38]">
+              <div class="text-center">
+                <div class="animate-spin w-8 h-8 border-2 border-[#A3E635] border-t-[#1E3D38] rounded-full mx-auto mb-4"></div>
+                <p class="text-[#A3E635]">Cargando visualización...</p>
               </div>
-            </template>
-          </ClientOnly>
-        </div>
+            </div>
+          </template>
+        </ClientOnly>
       </div>
     </div>
 
-    <div class="w-full px-6 pt-20 pb-8">
+    <!-- Leyenda -->
+    <div class="w-full px-6 pt-8 pb-8 bg-[#1E3D38]">
       <ChartLegend v-if="isMounted && chartData.length > 0" :chart-data="chartData" />
     </div>
   </div>
