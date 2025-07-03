@@ -4,6 +4,6 @@ import Chart from '../components/Chart.vue';
 
 <template>
   <div class="h-full">
-    <Chart jsonPath="/data/data.json" />
+    <Chart jsonPath="/data/stats_big_block.json" />
   </div>
 </template>

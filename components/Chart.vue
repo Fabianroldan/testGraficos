@@ -122,26 +122,23 @@ const formatTime = (time) => {
 };
 
 const renderChart = (Chart, tasks) => {
-  // Usar valores absolutos en segundos para el eje x
   const allTimes = tasks.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
   const minTime = Math.min(...allTimes);
   const maxTime = Math.max(...allTimes);
 
-  // Convertir a segundos y calcular el rango
-  const minTimeSec = minTime / 1_000_000;
-  const maxTimeSec = maxTime / 1_000_000;
-  const timeRange = maxTimeSec - minTimeSec;
+  const minTimeMin = minTime / 60_000_000;
+  const maxTimeMin = maxTime / 60_000_000;
+  const timeRange = maxTimeMin - minTimeMin;
 
-  // Ajustar el rango mínimo para asegurar que las barras sean visibles
-  const adjustedMaxTime = timeRange < 0.001 ? minTimeSec + 0.001 : maxTimeSec;
+  const adjustedMaxTime = timeRange < 0.000001 ? minTimeMin + 0.000001 : maxTimeMin;
 
   const data = tasks.map(task => {
     const colorScheme = task.colorScheme;
-    const startSec = task.segments[0].start / 1_000_000;
-    const endSec = task.segments[0].end / 1_000_000;
-    const durationSec = task.segments[0].duration / 1_000_000;
+    const startMin = task.segments[0].start / 60_000_000;
+    const endMin = task.segments[0].end / 60_000_000;
+    const durationMin = task.segments[0].duration / 60_000_000;
     return {
-      x: [startSec, endSec],
+      x: [startMin, endMin],
       y: task.name,
       backgroundColor: colorScheme.primary + 'E6',
       borderColor: colorScheme.border,
@@ -149,14 +146,14 @@ const renderChart = (Chart, tasks) => {
       hoverBorderColor: colorScheme.secondary,
       custom: {
         ...task.originalData,
-        duration: durationSec,
+        duration: durationMin,
         task: task.originalName.split('_')[0],
         subtask: task.originalName.split('_')[1] || '',
-        absoluteStartTime: startSec,
-        absoluteEndTime: endSec,
-        formattedDuration: durationSec.toFixed(6) + 's',
-        formattedAbsoluteStart: startSec.toFixed(6) + 's',
-        formattedAbsoluteEnd: endSec.toFixed(6) + 's'
+        absoluteStartTime: startMin,
+        absoluteEndTime: endMin,
+        formattedDuration: durationMin.toFixed(8) + ' min',
+        formattedAbsoluteStart: startMin.toFixed(8) + ' min',
+        formattedAbsoluteEnd: endMin.toFixed(8) + ' min'
       }
     };
   });
@@ -196,7 +193,7 @@ const renderChart = (Chart, tasks) => {
         padding: {
           top: 20,
           bottom: 20,
-          right: 30 // Añadir un poco de padding derecho
+          right: 30
         }
       },
       scales: {
@@ -207,7 +204,7 @@ const renderChart = (Chart, tasks) => {
           display: true,
           title: {
             display: true,
-            text: 'Tiempo absoluto (segundos)',
+            text: 'Tiempo absoluto (minutos)',
             color: '#FFFFFF',
             font: {
               size: 13,
@@ -225,11 +222,13 @@ const renderChart = (Chart, tasks) => {
             },
             maxTicksLimit: 10,
             callback: v => {
-              if (timeRange < 0.001) return `${v.toFixed(6)}s`;
-              if (timeRange < 0.01) return `${v.toFixed(5)}s`;
-              if (timeRange < 0.1) return `${v.toFixed(4)}s`;
-              if (timeRange < 1) return `${v.toFixed(3)}s`;
-              return `${v.toFixed(2)}s`;
+              if (timeRange < 0.000001) return `${v.toFixed(8)} min`;
+              if (timeRange < 0.00001) return `${v.toFixed(7)} min`;
+              if (timeRange < 0.0001) return `${v.toFixed(6)} min`;
+              if (timeRange < 0.001) return `${v.toFixed(5)} min`;
+              if (timeRange < 0.01) return `${v.toFixed(4)} min`;
+              if (timeRange < 0.1) return `${v.toFixed(3)} min`;
+              return `${v.toFixed(2)} min`;
             }
           },
           grid: {
@@ -325,7 +324,7 @@ const renderChart = (Chart, tasks) => {
               borderDash: [5, 5],
               label: {
                 display: true,
-                content: `Tiempo total: ${adjustedMaxTime.toFixed(6)}s`,
+                content: `Tiempo total: ${adjustedMaxTime.toFixed(2)} min`,
                 position: 'end',
                 backgroundColor: 'rgba(239, 68, 68, 0.8)',
                 color: '#FFFFFF',
@@ -351,7 +350,7 @@ const renderChart = (Chart, tasks) => {
 
   chartContainer.style.height = `${availableHeight + 150}px`;
   chartRef.value.style.height = `${totalHeight}px`;
-  chartRef.value.style.width = '80%'; // Aumentar el ancho para mostrar mejor las barras
+  chartRef.value.style.width = '80%';
 };
 
 onUnmounted(() => {
