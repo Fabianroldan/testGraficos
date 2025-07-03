@@ -1,14 +1,90 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import ChartLegend from './ChartLegend.vue';
+import ChartConfig from './ChartConfig.vue';
 
 const chartRef = ref(null);
 const chartInstance = ref(null);
 const loading = ref(true);
 const error = ref(null);
 const isMounted = ref(false);
+const rawData = ref([]);
+const allTasks = ref([]);
 
 const chartData = computed(() => chartInstance.value?.data?.datasets?.[0]?.data || []);
+
+// Configuración por defecto
+const config = ref({
+  showAll: true,
+  selectedTypes: [],
+  timeMode: 'all',
+  startTime: 0,
+  endTime: 0
+});
+
+// Tipos de proceso disponibles
+const availableTypes = computed(() => {
+  const types = new Set();
+  allTasks.value.forEach(task => {
+    const type = task.originalName.split('_')[0];
+    types.add(type);
+  });
+  return Array.from(types).sort();
+});
+
+// Rango de tiempo mínimo y máximo
+const timeRange = computed(() => {
+  if (!allTasks.value.length) return { min: 0, max: 0 };
+
+  const allTimes = allTasks.value.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
+  const minTime = Math.min(...allTimes) / 60_000_000; // Convertir a minutos
+  const maxTime = Math.max(...allTimes) / 60_000_000;
+
+  return { min: minTime, max: maxTime };
+});
+
+// Rango de tiempo efectivo (considerando filtros)
+const effectiveTimeRange = computed(() => {
+  const range = timeRange.value;
+  if (config.value.timeMode === 'custom') {
+    return {
+      min: config.value.startTime,
+      max: config.value.endTime
+    };
+  }
+  return range;
+});
+
+// Tareas filtradas
+const filteredTasks = computed(() => {
+  if (!allTasks.value.length) return [];
+
+  let filtered = allTasks.value;
+
+  // Filtrar por tipo
+  if (!config.value.showAll && config.value.selectedTypes.length > 0) {
+    filtered = filtered.filter(task => {
+      const type = task.originalName.split('_')[0];
+      return config.value.selectedTypes.includes(type);
+    });
+  }
+
+  // Filtrar por rango de tiempo
+  if (config.value.timeMode === 'custom') {
+    const startMicros = config.value.startTime * 60_000_000;
+    const endMicros = config.value.endTime * 60_000_000;
+
+    filtered = filtered.filter(task => {
+      const taskStart = task.segments[0].start;
+      const taskEnd = task.segments[0].end;
+
+      // Incluir si hay cualquier superposición con el rango
+      return taskStart < endMicros && taskEnd > startMicros;
+    });
+  }
+
+  return filtered;
+});
 
 const props = defineProps({
   jsonPath: {
@@ -23,6 +99,13 @@ onMounted(async () => {
   await loadData();
 });
 
+const handleConfigChange = (newConfig) => {
+  config.value = { ...newConfig };
+  if (allTasks.value.length > 0) {
+    renderChart();
+  }
+};
+
 const loadData = async () => {
   loading.value = true;
   error.value = null;
@@ -32,12 +115,27 @@ const loadData = async () => {
     const annotationPlugin = await import('chartjs-plugin-annotation');
     Chart.register(BarController, BarElement, LinearScale, CategoryScale, Tooltip, Title);
     Chart.register(annotationPlugin.default);
+
     const response = await fetch(props.jsonPath);
-    if (!response.ok) throw new Error('Error al cargar archivo');
+    if (!response.ok) throw new Error('Error loading file');
     const data = await response.json();
-    const tasks = processData(data);
-    if (!tasks.length) throw new Error('No hay datos válidos en el JSON');
-    renderChart(Chart, tasks);
+
+    rawData.value = data;
+    allTasks.value = processData(data);
+
+    if (!allTasks.value.length) throw new Error('No valid data in JSON');
+
+    // Initialize config with default values
+    const range = timeRange.value;
+    config.value = {
+      showAll: true,
+      selectedTypes: availableTypes.value,
+      timeMode: 'all',
+      startTime: range.min,
+      endTime: range.max
+    };
+
+    renderChart();
   } catch (err) {
     error.value = err.message;
     console.error('Error:', err);
@@ -50,11 +148,18 @@ watch(() => props.jsonPath, async () => {
   if (isMounted.value) await loadData();
 });
 
+// Watcher para renderizar el gráfico cuando cambian los filtros
+watch(() => filteredTasks.value, () => {
+  if (isMounted.value && filteredTasks.value.length > 0) {
+    renderChart();
+  }
+}, { deep: true });
+
 const processData = (rawData) => {
   const nameCounts = {};
   return rawData.map((item) => {
     const count = nameCounts[item.name] = (nameCounts[item.name] || 0) + 1;
-    const displayName = `${item.name}[${count}] - ${formatTime(item.duration)} microsegundos`;
+    const displayName = `${item.name}[${count}] - ${formatTime(item.duration)} microseconds`;
     const colorScheme = getColorForTask(item.name);
     return {
       name: displayName,
@@ -121,13 +226,14 @@ const formatTime = (time) => {
   return new Intl.NumberFormat('en-US').format(time);
 };
 
-const renderChart = (Chart, tasks) => {
-  const allTimes = tasks.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
-  const minTime = Math.min(...allTimes);
-  const maxTime = Math.max(...allTimes);
+const renderChart = () => {
+  if (!filteredTasks.value.length) return;
 
-  const minTimeMin = minTime / 60_000_000;
-  const maxTimeMin = maxTime / 60_000_000;
+  const tasks = filteredTasks.value;
+  const range = effectiveTimeRange.value;
+
+  const minTimeMin = range.min;
+  const maxTimeMin = range.max;
   const timeRange = maxTimeMin - minTimeMin;
 
   const adjustedMaxTime = timeRange < 0.000001 ? minTimeMin + 0.000001 : maxTimeMin;
@@ -164,193 +270,198 @@ const renderChart = (Chart, tasks) => {
     chartInstance.value.destroy();
   }
 
-  chartInstance.value = new Chart(chartRef.value, {
-    type: 'bar',
-    data: {
-      labels: yLabels,
-      datasets: [{
-        label: 'Tareas',
-        data,
-        backgroundColor: data.map(d => d.backgroundColor),
-        borderColor: data.map(d => d.borderColor),
-        borderWidth: 1,
-        barPercentage: 0.95,
-        categoryPercentage: 0.95,
-        borderRadius: 2,
-        borderSkipped: false,
-        minBarLength: 5
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      indexAxis: 'y',
-      parsing: {
-        xAxisKey: 'x',
-        yAxisKey: 'y'
-      },
-      layout: {
-        padding: {
-          top: 20,
-          bottom: 20,
-          right: 30
-        }
-      },
-      scales: {
-        x: {
-          type: 'linear',
-          min: 0,
-          max: adjustedMaxTime + 0.5,
-          display: true,
-          title: {
-            display: true,
-            text: 'Tiempo absoluto (minutos)',
-            color: '#A3E635',
-            font: {
-              size: 13,
-              weight: '600',
-              family: 'Inter, system-ui, sans-serif'
-            }
-          },
-          ticks: {
-            display: true,
-            color: '#A3E635',
-            font: {
-              size: 11,
-              weight: '500',
-              family: 'Inter, system-ui, sans-serif'
-            },
-            maxTicksLimit: 10,
-            callback: v => {
-              if (timeRange < 0.000001) return `${v.toFixed(8)} min`;
-              if (timeRange < 0.00001) return `${v.toFixed(7)} min`;
-              if (timeRange < 0.0001) return `${v.toFixed(6)} min`;
-              if (timeRange < 0.001) return `${v.toFixed(5)} min`;
-              if (timeRange < 0.01) return `${v.toFixed(4)} min`;
-              if (timeRange < 0.1) return `${v.toFixed(3)} min`;
-              return `${v.toFixed(2)} min`;
-            }
-          },
-          grid: {
-            display: true,
-            color: 'var(--color-chart-grid)',
-            drawBorder: true,
-            borderColor: 'var(--color-primary-dark)',
-            borderWidth: 1,
-            lineWidth: 0.5
-          }
-        },
-        y: {
-          type: 'category',
-          labels: yLabels,
-          offset: true,
-          display: true,
-          title: {
-            display: true,
-            color: '#A3E635',
-            font: {
-              size: 13,
-              weight: '600',
-              family: 'Inter, system-ui, sans-serif'
-            }
-          },
-          grid: {
-            display: true,
-            color: 'var(--color-chart-grid)',
-            drawBorder: true,
-            borderColor: 'var(--color-primary-dark)',
-            borderWidth: 1,
-            lineWidth: 0.5
-          },
-          ticks: {
-            display: true,
-            color: '#A3E635',
-            font: {
-              weight: '500',
-              size: 11,
-              family: 'Inter, system-ui, sans-serif'
-            },
-            autoSkip: false,
-            mirror: false,
-            padding: 12
-          },
-        }
-      },
-      plugins: {
-        tooltip: {
-          backgroundColor: 'var(--color-primary-dark)',
-          titleColor: '#A3E635',
-          bodyColor: '#E2E8F0',
-          borderColor: 'var(--color-chart-grid)',
+  // Necesitamos acceso a Chart, lo obtenemos dinámicamente
+  import('chart.js').then(ChartJS => {
+    const { Chart } = ChartJS;
+
+    chartInstance.value = new Chart(chartRef.value, {
+      type: 'bar',
+      data: {
+        labels: yLabels,
+        datasets: [{
+          label: 'Tareas',
+          data,
+          backgroundColor: data.map(d => d.backgroundColor),
+          borderColor: data.map(d => d.borderColor),
           borderWidth: 1,
-          padding: 16,
-          bodySpacing: 8,
-          cornerRadius: 8,
-          displayColors: true,
-          usePointStyle: true,
-          boxPadding: 6,
-          titleFont: {
-            size: 14,
-            weight: '600',
-            family: 'Inter, system-ui, sans-serif'
-          },
-          bodyFont: {
-            size: 12,
-            weight: '400',
-            family: 'Inter, system-ui, sans-serif'
-          },
-          callbacks: {
-            label: (ctx) => {
-              const custom = ctx.raw?.custom || {};
-              return [
-                `Inicio: ${custom.formattedAbsoluteStart}`,
-                `Final: ${custom.formattedAbsoluteEnd}`,
-                `Duración: ${custom.formattedDuration}`,
-              ];
-            }
+          barPercentage: 0.95,
+          categoryPercentage: 0.95,
+          borderRadius: 2,
+          borderSkipped: false,
+          minBarLength: 5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        parsing: {
+          xAxisKey: 'x',
+          yAxisKey: 'y'
+        },
+        layout: {
+          padding: {
+            top: 20,
+            bottom: 20,
+            right: 30
           }
         },
-        legend: {
-          display: false
+        scales: {
+          x: {
+            type: 'linear',
+            min: minTimeMin,
+            max: adjustedMaxTime + 0.5,
+            display: true,
+            title: {
+              display: true,
+              text: 'Absolute time (minutes)',
+              color: '#A3E635',
+              font: {
+                size: 13,
+                weight: '600',
+                family: 'Inter, system-ui, sans-serif'
+              }
+            },
+            ticks: {
+              display: true,
+              color: '#A3E635',
+              font: {
+                size: 11,
+                weight: '500',
+                family: 'Inter, system-ui, sans-serif'
+              },
+              maxTicksLimit: 10,
+              callback: v => {
+                if (timeRange < 0.000001) return `${v.toFixed(8)} min`;
+                if (timeRange < 0.00001) return `${v.toFixed(7)} min`;
+                if (timeRange < 0.0001) return `${v.toFixed(6)} min`;
+                if (timeRange < 0.001) return `${v.toFixed(5)} min`;
+                if (timeRange < 0.01) return `${v.toFixed(4)} min`;
+                if (timeRange < 0.1) return `${v.toFixed(3)} min`;
+                return `${v.toFixed(2)} min`;
+              }
+            },
+            grid: {
+              display: true,
+              color: 'var(--color-chart-grid)',
+              drawBorder: true,
+              borderColor: 'var(--color-primary-dark)',
+              borderWidth: 1,
+              lineWidth: 0.5
+            }
+          },
+          y: {
+            type: 'category',
+            labels: yLabels,
+            offset: true,
+            display: true,
+            title: {
+              display: true,
+              color: '#A3E635',
+              font: {
+                size: 13,
+                weight: '600',
+                family: 'Inter, system-ui, sans-serif'
+              }
+            },
+            grid: {
+              display: true,
+              color: 'var(--color-chart-grid)',
+              drawBorder: true,
+              borderColor: 'var(--color-primary-dark)',
+              borderWidth: 1,
+              lineWidth: 0.5
+            },
+            ticks: {
+              display: true,
+              color: '#A3E635',
+              font: {
+                weight: '500',
+                size: 11,
+                family: 'Inter, system-ui, sans-serif'
+              },
+              autoSkip: false,
+              mirror: false,
+              padding: 12
+            },
+          }
         },
-        annotation: {
-          annotations: {
-            maxTimeLine: {
-              type: 'line',
-              xMin: adjustedMaxTime,
-              xMax: adjustedMaxTime,
-              borderColor: '#EF4444',
-              borderWidth: 2,
-              borderDash: [5, 5],
-              label: {
-                display: true,
-                content: `Tiempo total: ${adjustedMaxTime.toFixed(2)} min`,
-                position: 'end',
-                backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                color: '#FFFFFF',
-                font: {
-                  size: 11,
-                  weight: '600'
-                },
-                padding: 4,
-                cornerRadius: 4
+        plugins: {
+          tooltip: {
+            backgroundColor: 'var(--color-primary-dark)',
+            titleColor: '#A3E635',
+            bodyColor: '#E2E8F0',
+            borderColor: 'var(--color-chart-grid)',
+            borderWidth: 1,
+            padding: 16,
+            bodySpacing: 8,
+            cornerRadius: 8,
+            displayColors: true,
+            usePointStyle: true,
+            boxPadding: 6,
+            titleFont: {
+              size: 14,
+              weight: '600',
+              family: 'Inter, system-ui, sans-serif'
+            },
+            bodyFont: {
+              size: 12,
+              weight: '400',
+              family: 'Inter, system-ui, sans-serif'
+            },
+            callbacks: {
+              label: (ctx) => {
+                const custom = ctx.raw?.custom || {};
+                return [
+                  `Inicio: ${custom.formattedAbsoluteStart}`,
+                  `Final: ${custom.formattedAbsoluteEnd}`,
+                  `Duración: ${custom.formattedDuration}`,
+                ];
+              }
+            }
+          },
+          legend: {
+            display: false
+          },
+          annotation: {
+            annotations: {
+              maxTimeLine: {
+                type: 'line',
+                xMin: adjustedMaxTime,
+                xMax: adjustedMaxTime,
+                borderColor: '#EF4444',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                label: {
+                  display: true,
+                  content: `Total time: ${adjustedMaxTime.toFixed(2)} min`,
+                  position: 'end',
+                  backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                  color: '#FFFFFF',
+                  font: {
+                    size: 11,
+                    weight: '600'
+                  },
+                  padding: 4,
+                  cornerRadius: 4
+                }
               }
             }
           }
         }
       }
-    }
+    });
+
+    const chartContainer = chartRef.value.parentElement;
+    const availableHeight = window.innerHeight - 200;
+    const barHeight = 40;
+    const spacing = 6;
+    const totalHeight = Math.max(tasks.length * (barHeight + spacing), 600);
+
+    chartContainer.style.height = `${availableHeight + 150}px`;
+    chartRef.value.style.height = `${totalHeight}px`;
+    chartRef.value.style.width = '80%';
   });
-
-  const chartContainer = chartRef.value.parentElement;
-  const availableHeight = window.innerHeight - 200;
-  const barHeight = 40;
-  const spacing = 6;
-  const totalHeight = Math.max(tasks.length * (barHeight + spacing), 600);
-
-  chartContainer.style.height = `${availableHeight + 150}px`;
-  chartRef.value.style.height = `${totalHeight}px`;
-  chartRef.value.style.width = '80%';
 };
 
 onUnmounted(() => {
@@ -374,20 +485,25 @@ onUnmounted(() => {
 
     <div class="flex-1 w-full px-4 py-8">
       <div class="max-w-[95vw] mx-auto">
+        <!-- Configuration component -->
+        <ChartConfig v-if="isMounted && allTasks.length > 0" :available-types="availableTypes" :min-time="timeRange.min"
+          :max-time="timeRange.max" :config="config" @config-change="handleConfigChange" />
+
         <ClientOnly>
-          <div class="rounded-lg border border-slate-200 shadow-sm p-4 w-full h-[80vh] min-h-[600px] mx-auto flex items-center justify-center bg-[#1E3D38]">
-            <canvas 
-              v-if="isMounted" 
-              ref="chartRef" 
+          <div
+            class="rounded-lg border border-slate-200 shadow-sm p-4 w-full h-[80vh] min-h-[600px] mx-auto flex items-center justify-center bg-[#1E3D38]">
+            <canvas v-if="isMounted" ref="chartRef"
               class="w-full h-full transition-opacity duration-300 text-accent-text"
-              :class="{ 'opacity-50': loading }" 
-            />
+              :class="{ 'opacity-50': loading }" />
           </div>
           <template #fallback>
-            <div class="rounded-lg border border-slate-200 shadow-sm h-[80vh] min-h-[600px] flex items-center justify-center bg-[#1E3D38]">
+            <div
+              class="rounded-lg border border-slate-200 shadow-sm h-[80vh] min-h-[600px] flex items-center justify-center bg-[#1E3D38]">
               <div class="text-center">
-                <div class="animate-spin w-8 h-8 border-2 border-[#A3E635] border-t-[#1E3D38] rounded-full mx-auto mb-4"></div>
-                <p class="text-[#A3E635]">Cargando visualización...</p>
+                <div
+                  class="animate-spin w-8 h-8 border-2 border-[#A3E635] border-t-[#1E3D38] rounded-full mx-auto mb-4">
+                </div>
+                <p class="text-[#A3E635]">Loading visualization...</p>
               </div>
             </div>
           </template>

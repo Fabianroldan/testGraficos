@@ -57,13 +57,13 @@ const clearAllFilters = () => {
       <div class="px-4 py-3 border-b border-slate-200 bg-[#1E3D38]">
         <div class="flex items-center justify-between gap-3 mb-3">
           <h3 class="text-base font-semibold text-[#A3E635]">
-            Tareas ({{ chartData.length }})
+            Tasks ({{ chartData.length }})
           </h3>
           <select 
             v-model="selectedCategory"
             class="px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#A3E635] bg-[#1E3D38] text-[#A3E635]"
           >
-            <option value="">Todas</option>
+            <option value="">All</option>
             <option 
               v-for="category in uniqueCategories" 
               :key="category" 
@@ -78,7 +78,7 @@ const clearAllFilters = () => {
         <input 
           type="text" 
           v-model="legendFilter" 
-          placeholder="Buscar tareas..."
+          placeholder="Search tasks..."
           class="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#A3E635] placeholder-[#A3E635] bg-[#1E3D38] text-[#A3E635]"
         />
       </div>
@@ -108,8 +108,8 @@ const clearAllFilters = () => {
               </h4>
             </div>
             <div class="text-xs text-[#A3E635] opacity-80">
-              <p>Inicio: {{ task.custom?.formattedAbsoluteStart }}</p>
-              <p>Duración: {{ task.custom?.formattedDuration }}</p>
+              <p>Start: {{ task.custom?.formattedAbsoluteStart }}</p>
+              <p>Duration: {{ task.custom?.formattedDuration }}</p>
             </div>
           </div>
         </div>
@@ -119,7 +119,7 @@ const clearAllFilters = () => {
           class="mt-4 pt-3 border-t border-slate-200"
         >
           <div class="flex justify-between text-sm text-[#A3E635]">
-            <span>{{ filteredLegendItems.length }} tareas</span>
+            <span>{{ filteredLegendItems.length }} tasks</span>
             <span>Total: {{ totalDuration }} min</span>
           </div>
         </div>
@@ -128,12 +128,12 @@ const clearAllFilters = () => {
           v-else 
           class="text-center py-8 text-[#A3E635]"
         >
-          <p class="mb-3">No se encontraron tareas</p>
+          <p class="mb-3">No tasks found</p>
           <button 
             @click="clearAllFilters"
             class="px-3 py-1.5 bg-[#A3E635] text-[#1E3D38] rounded text-sm hover:bg-[#b6f35a] transition-colors"
           >
-            Limpiar filtros
+            Clear filters
           </button>
         </div>
       </div>
