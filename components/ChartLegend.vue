@@ -1,5 +1,58 @@
+<script setup>
+import { ref, computed } from 'vue';
+
+const props = defineProps({
+  chartData: {
+    type: Array,
+    default: () => []
+  }
+});
+
+const legendFilter = ref('');
+const selectedCategory = ref('');
+
+const filteredLegendItems = computed(() => {
+  if (!props.chartData || props.chartData.length === 0) return [];
+
+  let filtered = props.chartData;
+
+  if (legendFilter.value) {
+    filtered = filtered.filter(item =>
+      item.y.toLowerCase().includes(legendFilter.value.toLowerCase()) ||
+      (item.custom?.task?.toLowerCase().includes(legendFilter.value.toLowerCase())) ||
+      (item.custom?.subtask?.toLowerCase().includes(legendFilter.value.toLowerCase()))
+    );
+  }
+
+  if (selectedCategory.value) {
+    filtered = filtered.filter(item => item.custom?.task === selectedCategory.value);
+  }
+
+  return filtered;
+});
+
+const uniqueCategories = computed(() => {
+  const categories = props.chartData.map(item => item.custom?.task).filter(Boolean);
+  return [...new Set(categories)];
+});
+
+const totalDuration = computed(() => {
+  if (!filteredLegendItems.value.length) return '0.00';
+  const starts = filteredLegendItems.value.map(item => item.custom?.absoluteStartTime ?? 0);
+  const ends = filteredLegendItems.value.map(item => (item.custom?.absoluteStartTime ?? 0) + (item.custom?.duration ?? 0));
+  const minStart = Math.min(...starts);
+  const maxEnd = Math.max(...ends);
+  return (maxEnd - minStart).toFixed(8);
+});
+
+const clearAllFilters = () => {
+  legendFilter.value = '';
+  selectedCategory.value = '';
+};
+</script>
+
 <template>
-  <div class="w-full max-w-none">
+  <div class="w-full max-w-[1800px] mx-auto">
     <div class="rounded-2xl shadow-sm border border-slate-200 overflow-hidden bg-[#1E3D38]">
       <div class="px-4 py-3 border-b border-slate-200 bg-[#1E3D38]">
         <div class="flex items-center justify-between gap-3 mb-3">
@@ -87,59 +140,6 @@
     </div>
   </div>
 </template>
-
-<script setup>
-import { ref, computed } from 'vue';
-
-const props = defineProps({
-  chartData: {
-    type: Array,
-    default: () => []
-  }
-});
-
-const legendFilter = ref('');
-const selectedCategory = ref('');
-
-const filteredLegendItems = computed(() => {
-  if (!props.chartData || props.chartData.length === 0) return [];
-
-  let filtered = props.chartData;
-
-  if (legendFilter.value) {
-    filtered = filtered.filter(item =>
-      item.y.toLowerCase().includes(legendFilter.value.toLowerCase()) ||
-      (item.custom?.task?.toLowerCase().includes(legendFilter.value.toLowerCase())) ||
-      (item.custom?.subtask?.toLowerCase().includes(legendFilter.value.toLowerCase()))
-    );
-  }
-
-  if (selectedCategory.value) {
-    filtered = filtered.filter(item => item.custom?.task === selectedCategory.value);
-  }
-
-  return filtered;
-});
-
-const uniqueCategories = computed(() => {
-  const categories = props.chartData.map(item => item.custom?.task).filter(Boolean);
-  return [...new Set(categories)];
-});
-
-const totalDuration = computed(() => {
-  if (!filteredLegendItems.value.length) return '0.00';
-  const starts = filteredLegendItems.value.map(item => item.custom?.absoluteStartTime ?? 0);
-  const ends = filteredLegendItems.value.map(item => (item.custom?.absoluteStartTime ?? 0) + (item.custom?.duration ?? 0));
-  const minStart = Math.min(...starts);
-  const maxEnd = Math.max(...ends);
-  return (maxEnd - minStart).toFixed(8);
-});
-
-const clearAllFilters = () => {
-  legendFilter.value = '';
-  selectedCategory.value = '';
-};
-</script>
 
 <style>
 .custom-scrollbar::-webkit-scrollbar {

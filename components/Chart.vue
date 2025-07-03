@@ -360,7 +360,6 @@ onUnmounted(() => {
 
 <template>
   <div class="min-h-screen w-full bg-primary-dark flex flex-col">
-    <!-- Mensaje de error -->
     <div v-if="error"
       class="absolute top-6 left-1/2 transform -translate-x-1/2 bg-red-50 text-red-800 px-6 py-3 rounded-lg border border-red-200 shadow-sm z-50">
       <div class="flex items-center gap-2">
@@ -373,7 +372,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Contenedor principal del gráfico -->
     <div class="flex-1 w-full px-4 py-8">
       <div class="max-w-[95vw] mx-auto">
         <ClientOnly>
@@ -397,8 +395,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Leyenda -->
-    <div class="w-full px-6 pt-8 pb-8 bg-[#1E3D38]">
+    <div class="w-full px-6 pt-8 pb-8">
       <ChartLegend v-if="isMounted && chartData.length > 0" :chart-data="chartData" />
     </div>
   </div>
