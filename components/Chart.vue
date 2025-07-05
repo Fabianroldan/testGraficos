@@ -10,10 +10,10 @@ const error = ref(null);
 const isMounted = ref(false);
 const rawData = ref([]);
 const allTasks = ref([]);
+const isRendering = ref(false);
 
 const chartData = computed(() => chartInstance.value?.data?.datasets?.[0]?.data || []);
 
-// Configuración por defecto
 const config = ref({
   showAll: true,
   selectedTypes: [],
@@ -22,7 +22,6 @@ const config = ref({
   endTime: 0
 });
 
-// Tipos de proceso disponibles
 const availableTypes = computed(() => {
   const types = new Set();
   allTasks.value.forEach(task => {
@@ -32,18 +31,16 @@ const availableTypes = computed(() => {
   return Array.from(types).sort();
 });
 
-// Rango de tiempo mínimo y máximo
 const timeRange = computed(() => {
   if (!allTasks.value.length) return { min: 0, max: 0 };
 
   const allTimes = allTasks.value.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
-  const minTime = Math.min(...allTimes) / 60_000_000; // Convertir a minutos
+  const minTime = Math.min(...allTimes) / 60_000_000;
   const maxTime = Math.max(...allTimes) / 60_000_000;
 
   return { min: minTime, max: maxTime };
 });
 
-// Rango de tiempo efectivo (considerando filtros)
 const effectiveTimeRange = computed(() => {
   const range = timeRange.value;
   if (config.value.timeMode === 'custom') {
@@ -55,13 +52,11 @@ const effectiveTimeRange = computed(() => {
   return range;
 });
 
-// Tareas filtradas
 const filteredTasks = computed(() => {
   if (!allTasks.value.length) return [];
 
   let filtered = allTasks.value;
 
-  // Filtrar por tipo
   if (!config.value.showAll && config.value.selectedTypes.length > 0) {
     filtered = filtered.filter(task => {
       const type = task.originalName.split('_')[0];
@@ -69,7 +64,6 @@ const filteredTasks = computed(() => {
     });
   }
 
-  // Filtrar por rango de tiempo
   if (config.value.timeMode === 'custom') {
     const startMicros = config.value.startTime * 60_000_000;
     const endMicros = config.value.endTime * 60_000_000;
@@ -78,7 +72,6 @@ const filteredTasks = computed(() => {
       const taskStart = task.segments[0].start;
       const taskEnd = task.segments[0].end;
 
-      // Incluir si hay cualquier superposición con el rango
       return taskStart < endMicros && taskEnd > startMicros;
     });
   }
@@ -125,7 +118,6 @@ const loadData = async () => {
 
     if (!allTasks.value.length) throw new Error('No valid data in JSON');
 
-    // Initialize config with default values
     const range = timeRange.value;
     config.value = {
       showAll: true,
@@ -148,7 +140,6 @@ watch(() => props.jsonPath, async () => {
   if (isMounted.value) await loadData();
 });
 
-// Watcher para renderizar el gráfico cuando cambian los filtros
 watch(() => filteredTasks.value, () => {
   if (isMounted.value && filteredTasks.value.length > 0) {
     renderChart();
@@ -157,19 +148,31 @@ watch(() => filteredTasks.value, () => {
 
 const processData = (rawData) => {
   const nameCounts = {};
-  return rawData.map((item) => {
-    const count = nameCounts[item.name] = (nameCounts[item.name] || 0) + 1;
-    const displayName = `${item.name}[${count}] - ${formatTime(item.duration)} microseconds`;
-    const colorScheme = getColorForTask(item.name);
+  let cumulativeStart = 0;
+  
+  return rawData.map((item, index) => {
+    const taskName = item.name || `Task_${index + 1}`;
+    const duration = item.duration || 0;
+    const start = item.start !== undefined ? item.start : cumulativeStart;
+    const end = item.end !== undefined ? item.end : start + duration;
+    
+    if (item.start === undefined) {
+      cumulativeStart = end;
+    }
+    
+    const count = nameCounts[taskName] = (nameCounts[taskName] || 0) + 1;
+    const displayName = `${taskName}[${count}] - ${formatTime(duration)} microseconds`;
+    const colorScheme = getColorForTask(taskName);
+    
     return {
       name: displayName,
-      originalName: item.name,
+      originalName: taskName,
       originalData: item,
       colorScheme: colorScheme,
       segments: [{
-        start: item.start,
-        end: item.start + item.duration,
-        duration: item.duration
+        start: start,
+        end: end,
+        duration: duration
       }]
     };
   });
@@ -226,53 +229,63 @@ const formatTime = (time) => {
   return new Intl.NumberFormat('en-US').format(time);
 };
 
-const renderChart = () => {
-  if (!filteredTasks.value.length) return;
+const renderChart = async () => {
+  if (!filteredTasks.value.length || isRendering.value) return;
+  
+  isRendering.value = true;
 
-  const tasks = filteredTasks.value;
-  const range = effectiveTimeRange.value;
+  try {
+    if (chartInstance.value) {
+      chartInstance.value.destroy();
+      chartInstance.value = null;
+    }
 
-  const minTimeMin = range.min;
-  const maxTimeMin = range.max;
-  const timeRange = maxTimeMin - minTimeMin;
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-  const adjustedMaxTime = timeRange < 0.000001 ? minTimeMin + 0.000001 : maxTimeMin;
+    const tasks = filteredTasks.value;
+    const range = effectiveTimeRange.value;
 
-  const data = tasks.map(task => {
-    const colorScheme = task.colorScheme;
-    const startMin = task.segments[0].start / 60_000_000;
-    const endMin = task.segments[0].end / 60_000_000;
-    const durationMin = task.segments[0].duration / 60_000_000;
-    return {
-      x: [startMin, endMin],
-      y: task.name,
-      backgroundColor: colorScheme.primary + 'E6',
-      borderColor: colorScheme.border,
-      hoverBackgroundColor: colorScheme.primary + 'F2',
-      hoverBorderColor: colorScheme.secondary,
-      custom: {
-        ...task.originalData,
-        duration: durationMin,
-        task: task.originalName.split('_')[0],
-        subtask: task.originalName.split('_')[1] || '',
-        absoluteStartTime: startMin,
-        absoluteEndTime: endMin,
-        formattedDuration: durationMin.toFixed(8) + ' min',
-        formattedAbsoluteStart: startMin.toFixed(8) + ' min',
-        formattedAbsoluteEnd: endMin.toFixed(8) + ' min'
-      }
-    };
-  });
+    const minTimeMin = range.min;
+    const maxTimeMin = range.max;
+    const timeRange = maxTimeMin - minTimeMin;
 
-  const yLabels = tasks.map(task => task.name);
+    const adjustedMaxTime = timeRange < 0.000001 ? minTimeMin + 0.000001 : maxTimeMin;
 
-  if (chartInstance.value) {
-    chartInstance.value.destroy();
-  }
+    const data = tasks.map(task => {
+      const colorScheme = task.colorScheme;
+      const startMin = task.segments[0].start / 60_000_000;
+      const endMin = task.segments[0].end / 60_000_000;
+      const durationMin = task.segments[0].duration / 60_000_000;
+      return {
+        x: [startMin, endMin],
+        y: task.name,
+        backgroundColor: colorScheme.primary + 'E6',
+        borderColor: colorScheme.border,
+        hoverBackgroundColor: colorScheme.primary + 'F2',
+        hoverBorderColor: colorScheme.secondary,
+        custom: {
+          ...task.originalData,
+          duration: durationMin,
+          task: task.originalName.split('_')[0],
+          subtask: task.originalName.split('_')[1] || '',
+          absoluteStartTime: startMin,
+          absoluteEndTime: endMin,
+          formattedDuration: durationMin.toFixed(8) + ' min',
+          formattedAbsoluteStart: startMin.toFixed(8) + ' min',
+          formattedAbsoluteEnd: endMin.toFixed(8) + ' min'
+        }
+      };
+    });
 
-  // Necesitamos acceso a Chart, lo obtenemos dinámicamente
-  import('chart.js').then(ChartJS => {
+    const yLabels = tasks.map(task => task.name);
+
+    const ChartJS = await import('chart.js');
     const { Chart } = ChartJS;
+
+    if (!chartRef.value) {
+      console.error('Canvas element not available');
+      return;
+    }
 
     chartInstance.value = new Chart(chartRef.value, {
       type: 'bar',
@@ -309,7 +322,7 @@ const renderChart = () => {
         scales: {
           x: {
             type: 'linear',
-            min: minTimeMin,
+            min: 0,
             max: adjustedMaxTime + 0.5,
             display: true,
             title: {
@@ -461,7 +474,12 @@ const renderChart = () => {
     chartContainer.style.height = `${availableHeight + 150}px`;
     chartRef.value.style.height = `${totalHeight}px`;
     chartRef.value.style.width = '80%';
-  });
+  } catch (chartError) {
+    console.error('Error rendering chart:', chartError);
+    error.value = 'Error rendering chart';
+  } finally {
+    isRendering.value = false;
+  }
 };
 
 onUnmounted(() => {
@@ -485,7 +503,6 @@ onUnmounted(() => {
 
     <div class="flex-1 w-full px-4 py-8">
       <div class="max-w-[95vw] mx-auto">
-        <!-- Configuration component -->
         <ChartConfig v-if="isMounted && allTasks.length > 0" :available-types="availableTypes" :min-time="timeRange.min"
           :max-time="timeRange.max" :config="config" @config-change="handleConfigChange" />
 
