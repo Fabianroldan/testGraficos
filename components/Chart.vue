@@ -150,9 +150,22 @@ const processData = (rawData) => {
   const nameCounts = {};
   let cumulativeStart = 0;
   
+  // Map task indices to types based on the data structure and duration patterns
+  const getTaskType = (index, duration) => {
+    // Analyze duration patterns to determine task types
+    if (duration >= 75000) return 'Main'; // High duration tasks (75ms+)
+    if (duration >= 3000) return 'KECCAKF'; // Medium-high duration (3ms+)
+    if (duration >= 1400 && duration < 1500) return 'ROM'; // Specific pattern around 1409
+    if (duration >= 300 && duration < 1400) return 'BINARY'; // Medium duration
+    if (duration >= 150 && duration < 300) return 'ARITH'; // Medium-low duration
+    if (duration >= 50 && duration < 150) return 'MEM'; // Low-medium duration
+    return 'INPUT'; // Very low duration tasks
+  };
+  
   return rawData.map((item, index) => {
-    const taskName = item.name || `Task_${index + 1}`;
     const duration = item.duration || 0;
+    const taskType = getTaskType(index, duration);
+    const taskName = item.name || `${taskType}_${index + 1}`;
     const start = item.start !== undefined ? item.start : cumulativeStart;
     const end = item.end !== undefined ? item.end : start + duration;
     
@@ -161,12 +174,16 @@ const processData = (rawData) => {
     }
     
     const count = nameCounts[taskName] = (nameCounts[taskName] || 0) + 1;
-    const displayName = `${taskName}[${count}] - ${formatTime(duration)} microseconds`;
+    const displayName = `${taskName}[${count}] - ${formatTime(duration)}`;
     const colorScheme = getColorForTask(taskName);
+    
+    // Get the type for simplified y-axis labels
+    const type = taskType;
     
     return {
       name: displayName,
       originalName: taskName,
+      type: type, // Add type for y-axis labeling
       originalData: item,
       colorScheme: colorScheme,
       segments: [{
@@ -226,7 +243,17 @@ const getColorForTask = (taskName) => {
 };
 
 const formatTime = (time) => {
-  return new Intl.NumberFormat('en-US').format(time);
+  // Convert microseconds to more readable units
+  if (time >= 1_000_000) {
+    // Convert to seconds for very large values
+    return `${(time / 1_000_000).toFixed(3)}s`;
+  } else if (time >= 1_000) {
+    // Convert to milliseconds for medium values
+    return `${(time / 1_000).toFixed(3)}ms`;
+  } else {
+    // Keep as microseconds for small values
+    return `${time.toFixed(0)}μs`;
+  }
 };
 
 const renderChart = async () => {
@@ -247,15 +274,26 @@ const renderChart = async () => {
 
     const minTimeMin = range.min;
     const maxTimeMin = range.max;
-    const timeRange = maxTimeMin - minTimeMin;
+    const timeRangeMin = maxTimeMin - minTimeMin;
 
-    const adjustedMaxTime = timeRange < 0.000001 ? minTimeMin + 0.000001 : maxTimeMin;
+    const adjustedMaxTime = timeRangeMin < 0.000001 ? minTimeMin + 0.000001 : maxTimeMin;
+
+    // Convert microseconds to more readable units for display
+    const formatTimeForDisplay = (microseconds) => {
+      if (microseconds >= 1_000_000) {
+        return `${(microseconds / 1_000_000).toFixed(3)}s`;
+      } else if (microseconds >= 1_000) {
+        return `${(microseconds / 1_000).toFixed(3)}ms`;
+      } else {
+        return `${microseconds.toFixed(0)}μs`;
+      }
+    };
 
     const data = tasks.map(task => {
       const colorScheme = task.colorScheme;
       const startMin = task.segments[0].start / 60_000_000;
       const endMin = task.segments[0].end / 60_000_000;
-      const durationMin = task.segments[0].duration / 60_000_000;
+      const durationMicros = task.segments[0].duration;
       return {
         x: [startMin, endMin],
         y: task.name,
@@ -265,19 +303,59 @@ const renderChart = async () => {
         hoverBorderColor: colorScheme.secondary,
         custom: {
           ...task.originalData,
-          duration: durationMin,
+          duration: durationMicros,
           task: task.originalName.split('_')[0],
           subtask: task.originalName.split('_')[1] || '',
           absoluteStartTime: startMin,
           absoluteEndTime: endMin,
-          formattedDuration: durationMin.toFixed(8) + ' min',
+          formattedDuration: formatTimeForDisplay(durationMicros),
           formattedAbsoluteStart: startMin.toFixed(8) + ' min',
           formattedAbsoluteEnd: endMin.toFixed(8) + ' min'
         }
       };
     });
 
-    const yLabels = tasks.map(task => task.name);
+    // Create simplified y-axis labels - only show unique types
+    const uniqueTypes = [];
+    const typesSeen = new Set();
+    const typeStats = {};
+    
+    // Calculate total time and stats for each type
+    // Calculate the actual total time from the data
+    const totalDurationMicros = tasks.reduce((sum, task) => sum + task.segments[0].duration, 0);
+    const totalExecutionTimeMin = totalDurationMicros / 60_000_000; // Convert to minutes
+    
+    tasks.forEach(task => {
+      const type = task.type;
+      if (!typeStats[type]) {
+        typeStats[type] = {
+          totalDuration: 0,
+          count: 0
+        };
+      }
+      typeStats[type].totalDuration += task.segments[0].duration;
+      typeStats[type].count++;
+      
+      if (!typesSeen.has(type)) {
+        typesSeen.add(type);
+        uniqueTypes.push(type);
+      }
+    });
+
+    // Create evenly distributed labels for y-axis with stats
+    const totalTasks = tasks.length;
+    const yLabels = new Array(totalTasks).fill('');
+    
+    // Distribute unique types evenly across the y-axis
+    uniqueTypes.forEach((type, index) => {
+      const position = Math.floor((index + 0.5) * totalTasks / uniqueTypes.length);
+      const stats = typeStats[type];
+      const durationMicros = stats.totalDuration;
+      const percentage = ((stats.totalDuration / totalDurationMicros) * 100).toFixed(1);
+      const formattedDuration = formatTimeForDisplay(durationMicros);
+      
+      yLabels[position] = `${type} (${percentage}% - ${formattedDuration})`;
+    });
 
     const ChartJS = await import('chart.js');
     const { Chart } = ChartJS;
@@ -290,7 +368,7 @@ const renderChart = async () => {
     chartInstance.value = new Chart(chartRef.value, {
       type: 'bar',
       data: {
-        labels: yLabels,
+        labels: tasks.map(task => task.name), // Use full task names for positioning
         datasets: [{
           label: 'Tareas',
           data,
@@ -345,12 +423,12 @@ const renderChart = async () => {
               },
               maxTicksLimit: 10,
               callback: v => {
-                if (timeRange < 0.000001) return `${v.toFixed(8)} min`;
-                if (timeRange < 0.00001) return `${v.toFixed(7)} min`;
-                if (timeRange < 0.0001) return `${v.toFixed(6)} min`;
-                if (timeRange < 0.001) return `${v.toFixed(5)} min`;
-                if (timeRange < 0.01) return `${v.toFixed(4)} min`;
-                if (timeRange < 0.1) return `${v.toFixed(3)} min`;
+                if (timeRangeMin < 0.000001) return `${v.toFixed(8)} min`;
+                if (timeRangeMin < 0.00001) return `${v.toFixed(7)} min`;
+                if (timeRangeMin < 0.0001) return `${v.toFixed(6)} min`;
+                if (timeRangeMin < 0.001) return `${v.toFixed(5)} min`;
+                if (timeRangeMin < 0.01) return `${v.toFixed(4)} min`;
+                if (timeRangeMin < 0.1) return `${v.toFixed(3)} min`;
                 return `${v.toFixed(2)} min`;
               }
             },
@@ -365,7 +443,7 @@ const renderChart = async () => {
           },
           y: {
             type: 'category',
-            labels: yLabels,
+            labels: tasks.map(task => task.name), // Use full names for positioning
             offset: true,
             display: true,
             title: {
@@ -390,12 +468,22 @@ const renderChart = async () => {
               color: '#A3E635',
               font: {
                 weight: '500',
-                size: 11,
+                size: 10,
                 family: 'Inter, system-ui, sans-serif'
               },
               autoSkip: false,
               mirror: false,
-              padding: 12
+              padding: 8,
+              maxRotation: 0,
+              minRotation: 0,
+              callback: function(value, index, values) {
+                // Show only the type label for each group
+                const task = tasks[index];
+                if (task) {
+                  return yLabels[index] || ''; // Use the simplified labels with stats
+                }
+                return '';
+              }
             },
           }
         },
