@@ -1,9 +1,8 @@
 <template>
-    <div class="bg-[#1E3D38] border border-slate-600 rounded-lg p-6 mb-6">
+    <div class="bg-[#1E3D38] border-2 border-white rounded-lg p-6 mb-6 w-full max-w-[1800px] mx-auto">
         <h3 class="text-[#A3E635] text-lg font-semibold mb-4">Analysis Configuration</h3>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Process type filter -->
             <div>
                 <label class="block text-[#A3E635] text-sm font-medium mb-3">
                     Process types to show:
@@ -25,7 +24,6 @@
                 </div>
             </div>
 
-            <!-- Time filter -->
             <div>
                 <label class="block text-[#A3E635] text-sm font-medium mb-3">
                     Time frame:
@@ -47,20 +45,20 @@
                             <label class="block text-sm text-slate-300 mb-1">Start time (minutes):</label>
                             <input type="number" v-model.number="localConfig.startTime" :min="minTime" :max="maxTime"
                                 step="0.000001"
-                                class="w-full px-3 py-2 bg-slate-700 border border-slate-500 rounded text-slate-200 focus:ring-[#A3E635] focus:border-[#A3E635]">
+                                class="w-full px-3 py-2 bg-slate-700 border border-white rounded text-slate-200 focus:ring-[#A3E635] focus:border-[#A3E635]">
                         </div>
                         <div>
                             <label class="block text-sm text-slate-300 mb-1">End time (minutes):</label>
                             <input type="number" v-model.number="localConfig.endTime" :min="minTime" :max="maxTime"
                                 step="0.000001"
-                                class="w-full px-3 py-2 bg-slate-700 border border-slate-500 rounded text-slate-200 focus:ring-[#A3E635] focus:border-[#A3E635]">
+                                class="w-full px-3 py-2 bg-slate-700 border border-white rounded text-slate-200 focus:ring-[#A3E635] focus:border-[#A3E635]">
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="mt-6 pt-4 border-t border-slate-600">
+        <div class="mt-6 pt-4 border-t border-white">
             <button @click="applyConfig"
                 class="bg-[#A3E635] text-slate-900 px-4 py-2 rounded-lg font-medium hover:bg-lime-400 transition-colors">
                 Apply Configuration
@@ -108,7 +106,6 @@ const toggleShowAll = () => {
 };
 
 const applyConfig = () => {
-    // Validate time range
     if (localConfig.value.timeMode === 'custom') {
         if (localConfig.value.startTime >= localConfig.value.endTime) {
             alert('Start time must be less than end time');
@@ -119,7 +116,6 @@ const applyConfig = () => {
     emit('config-change', { ...localConfig.value });
 };
 
-// Sincronizar cambios en props
 watch(() => props.config, (newConfig) => {
     localConfig.value = {
         showAll: newConfig.showAll,

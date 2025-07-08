@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import ChartLegend from './ChartLegend.vue';
 import ChartConfig from './ChartConfig.vue';
+import ChartStats from './ChartStats.vue';
 
 const chartRef = ref(null);
 const chartInstance = ref(null);
@@ -57,9 +58,7 @@ const filteredTasks = computed(() => {
   let filtered = allTasks.value;
 
   if (!config.value.showAll && config.value.selectedTypes.length > 0) {
-    filtered = filtered.filter(task => {
-      return config.value.selectedTypes.includes(task.type);
-    });
+    filtered = filtered.filter(task => config.value.selectedTypes.includes(task.type));
   }
 
   if (config.value.timeMode === 'custom') {
@@ -69,7 +68,6 @@ const filteredTasks = computed(() => {
     filtered = filtered.filter(task => {
       const taskStart = task.segments[0].start;
       const taskEnd = task.segments[0].end;
-
       return taskStart < endMicros && taskEnd > startMicros;
     });
   }
@@ -147,34 +145,32 @@ watch(() => filteredTasks.value, () => {
 const processData = (rawData) => {
   const nameCounts = {};
   let cumulativeStart = 0;
-  
-  // Extract task type from the actual name in the JSON
+
   const getTaskType = (name) => {
     if (!name) return 'UNKNOWN';
-    // Extract the part before the first underscore as the type
     const parts = name.split('_');
     return parts[0] || 'UNKNOWN';
   };
-  
+
   return rawData.map((item, index) => {
     const duration = item.duration || 0;
     const taskName = item.name || `UNKNOWN_${index + 1}`;
     const taskType = getTaskType(taskName);
     const start = item.start !== undefined ? item.start : cumulativeStart;
     const end = item.end !== undefined ? item.end : start + duration;
-    
+
     if (item.start === undefined) {
       cumulativeStart = end;
     }
-    
+
     const count = nameCounts[taskName] = (nameCounts[taskName] || 0) + 1;
     const displayName = `${taskName}[${count}] - ${formatTime(duration)}`;
     const colorScheme = getColorForTask(taskName);
-    
+
     return {
       name: displayName,
       originalName: taskName,
-      type: taskType, // Use the extracted type from the name
+      type: taskType,
       originalData: item,
       colorScheme: colorScheme,
       segments: [{
@@ -190,9 +186,9 @@ const getColorForTask = (taskName) => {
   const type = taskName.split('_')[0];
   const colorMap = {
     'Main': {
-      primary: '#475569',
-      secondary: '#334155',
-      border: '#64748B'
+      primary: '#DC2626',
+      secondary: '#B91C1C',
+      border: '#EF4444'
     },
     'ROM': {
       primary: '#1E40AF',
@@ -220,56 +216,27 @@ const getColorForTask = (taskName) => {
       border: '#38BDF8'
     },
     'KECCAKF': {
-      primary: '#B91C1C',
-      secondary: '#991B1B',
-      border: '#EF4444'
+      primary: '#DB2777',
+      secondary: '#BE185D',
+      border: '#EC4899'
     },
-    'KECCAK': {
-      primary: '#7C2D12',
-      secondary: '#92400E',
-      border: '#EA580C'
-    },
-    'POSEIDON': {
-      primary: '#059669',
-      secondary: '#047857',
-      border: '#10B981'
-    },
-    'BYTE': {
-      primary: '#7C3AED',
-      secondary: '#6D28D9',
-      border: '#8B5CF6'
-    },
-    'PADDING': {
-      primary: '#DC2626',
-      secondary: '#B91C1C',
-      border: '#F87171'
-    },
-    'DEFAULT': {
-      primary: '#374151',
-      secondary: '#1F2937',
-      border: '#6B7280'
-    }
   };
   return colorMap[type] || colorMap.DEFAULT;
 };
 
 const formatTime = (time) => {
-  // Convert microseconds to more readable units
   if (time >= 1_000_000) {
-    // Convert to seconds for very large values
     return `${(time / 1_000_000).toFixed(3)}s`;
   } else if (time >= 1_000) {
-    // Convert to milliseconds for medium values
     return `${(time / 1_000).toFixed(3)}ms`;
   } else {
-    // Keep as microseconds for small values
     return `${time.toFixed(0)}μs`;
   }
 };
 
 const renderChart = async () => {
   if (!filteredTasks.value.length || isRendering.value) return;
-  
+
   isRendering.value = true;
 
   try {
@@ -287,9 +254,11 @@ const renderChart = async () => {
     const maxTimeMin = range.max;
     const timeRangeMin = maxTimeMin - minTimeMin;
 
-    const adjustedMaxTime = timeRangeMin < 0.000001 ? minTimeMin + 0.000001 : maxTimeMin;
+    const adjustedRange = {
+      min: range.min,
+      max: timeRangeMin < 0.000001 ? range.min + 0.000001 : range.max
+    };
 
-    // Convert microseconds to more readable units for display
     const formatTimeForDisplay = (microseconds) => {
       if (microseconds >= 1_000_000) {
         return `${(microseconds / 1_000_000).toFixed(3)} s`;
@@ -326,11 +295,9 @@ const renderChart = async () => {
       };
     });
 
-    // Calculate total time and stats for each type from ALL tasks in allTasks (not just filtered)
     const globalTypeStats = {};
     const totalDurationMicros = allTasks.value.reduce((sum, task) => sum + task.segments[0].duration, 0);
-    
-    // Calculate stats from all tasks to get global totals
+
     allTasks.value.forEach(task => {
       const type = task.type;
       if (!globalTypeStats[type]) {
@@ -343,10 +310,9 @@ const renderChart = async () => {
       globalTypeStats[type].count++;
     });
 
-    // Create simplified y-axis labels - only show unique types from filtered tasks
     const uniqueTypes = [];
     const typesSeen = new Set();
-    
+
     tasks.forEach(task => {
       const type = task.type;
       if (!typesSeen.has(type)) {
@@ -355,18 +321,16 @@ const renderChart = async () => {
       }
     });
 
-    // Create evenly distributed labels for y-axis with global stats
     const totalTasks = tasks.length;
     const yLabels = new Array(totalTasks).fill('');
-    
-    // Distribute unique types evenly across the y-axis
+
     uniqueTypes.forEach((type, index) => {
       const position = Math.floor((index + 0.5) * totalTasks / uniqueTypes.length);
       const globalStats = globalTypeStats[type];
       const durationMicros = globalStats.totalDuration;
       const percentage = ((globalStats.totalDuration / totalDurationMicros) * 100).toFixed(1);
       const formattedDuration = formatTimeForDisplay(durationMicros);
-      
+
       yLabels[position] = `${type} - Total: ${formattedDuration} (${percentage}%)`;
     });
 
@@ -381,7 +345,7 @@ const renderChart = async () => {
     chartInstance.value = new Chart(chartRef.value, {
       type: 'bar',
       data: {
-        labels: tasks.map(task => task.name), // Use full task names for positioning
+        labels: tasks.map(task => task.name),
         datasets: [{
           label: 'Tareas',
           data,
@@ -413,8 +377,8 @@ const renderChart = async () => {
         scales: {
           x: {
             type: 'linear',
-            min: 0,
-            max: adjustedMaxTime + 0.5,
+            min: config.value.timeMode === 'custom' ? adjustedRange.min : 0,
+            max: adjustedRange.max,
             display: true,
             title: {
               display: true,
@@ -456,7 +420,7 @@ const renderChart = async () => {
           },
           y: {
             type: 'category',
-            labels: tasks.map(task => task.name), // Use full names for positioning
+            labels: tasks.map(task => task.name),
             offset: true,
             display: true,
             title: {
@@ -489,13 +453,8 @@ const renderChart = async () => {
               padding: 8,
               maxRotation: 0,
               minRotation: 0,
-              callback: function(value, index, values) {
-                // Show only the type label for each group
-                const task = tasks[index];
-                if (task) {
-                  return yLabels[index] || ''; // Use the simplified labels with stats
-                }
-                return '';
+              callback: function (value, index, values) {
+                return yLabels[index] || '';
               }
             },
           }
@@ -541,14 +500,14 @@ const renderChart = async () => {
             annotations: {
               maxTimeLine: {
                 type: 'line',
-                xMin: adjustedMaxTime,
-                xMax: adjustedMaxTime,
+                xMin: adjustedRange.max,
+                xMax: adjustedRange.max,
                 borderColor: '#EF4444',
                 borderWidth: 2,
                 borderDash: [5, 5],
                 label: {
                   display: true,
-                  content: `Total time: ${adjustedMaxTime.toFixed(2)} min`,
+                  content: `End time: ${adjustedRange.max.toFixed(2)} min`,
                   position: 'end',
                   backgroundColor: 'rgba(239, 68, 68, 0.8)',
                   color: '#FFFFFF',
@@ -602,21 +561,23 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="flex-1 w-full px-4 py-8">
-      <div class="max-w-[95vw] mx-auto">
+    <div class="flex-1 w-full px-4 py-6 flex flex-col">
+      <div class="w-full max-w-[1800px] mx-auto mb-6">
         <ChartConfig v-if="isMounted && allTasks.length > 0" :available-types="availableTypes" :min-time="timeRange.min"
           :max-time="timeRange.max" :config="config" @config-change="handleConfigChange" />
+      </div>
 
+      <div class="flex-1 w-full max-w-[1800px] mx-auto mb-6">
         <ClientOnly>
           <div
-            class="rounded-lg border border-slate-200 shadow-sm p-4 w-full h-[80vh] min-h-[600px] mx-auto flex items-center justify-center bg-[#1E3D38]">
+            class="rounded-lg border-2 border-white shadow-sm p-4 w-full h-full min-h-[500px] mx-auto flex items-center justify-center bg-[#1E3D38]">
             <canvas v-if="isMounted" ref="chartRef"
               class="w-full h-full transition-opacity duration-300 text-accent-text"
               :class="{ 'opacity-50': loading }" />
           </div>
           <template #fallback>
             <div
-              class="rounded-lg border border-slate-200 shadow-sm h-[80vh] min-h-[600px] flex items-center justify-center bg-[#1E3D38]">
+              class="rounded-lg border-2 border-white shadow-sm h-[500px] flex items-center justify-center bg-[#1E3D38]">
               <div class="text-center">
                 <div
                   class="animate-spin w-8 h-8 border-2 border-[#A3E635] border-t-[#1E3D38] rounded-full mx-auto mb-4">
@@ -627,10 +588,12 @@ onUnmounted(() => {
           </template>
         </ClientOnly>
       </div>
-    </div>
 
-    <div class="w-full px-6 pt-8 pb-8">
-      <ChartLegend v-if="isMounted && chartData.length > 0" :chart-data="chartData" />
+      <div class="w-full max-w-[1800px] mx-auto space-y-6 pb-6">
+        <ChartStats v-if="isMounted && filteredTasks.length > 0" :filtered-tasks="filteredTasks"
+          :time-range="effectiveTimeRange" />
+        <ChartLegend v-if="isMounted && chartData.length > 0" :chart-data="chartData" />
+      </div>
     </div>
   </div>
 </template>
