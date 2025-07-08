@@ -25,8 +25,7 @@ const config = ref({
 const availableTypes = computed(() => {
   const types = new Set();
   allTasks.value.forEach(task => {
-    const type = task.originalName.split('_')[0];
-    types.add(type);
+    types.add(task.type);
   });
   return Array.from(types).sort();
 });
@@ -59,8 +58,7 @@ const filteredTasks = computed(() => {
 
   if (!config.value.showAll && config.value.selectedTypes.length > 0) {
     filtered = filtered.filter(task => {
-      const type = task.originalName.split('_')[0];
-      return config.value.selectedTypes.includes(type);
+      return config.value.selectedTypes.includes(task.type);
     });
   }
 
@@ -150,22 +148,18 @@ const processData = (rawData) => {
   const nameCounts = {};
   let cumulativeStart = 0;
   
-  // Map task indices to types based on the data structure and duration patterns
-  const getTaskType = (index, duration) => {
-    // Analyze duration patterns to determine task types
-    if (duration >= 75000) return 'Main'; // High duration tasks (75ms+)
-    if (duration >= 3000) return 'KECCAKF'; // Medium-high duration (3ms+)
-    if (duration >= 1400 && duration < 1500) return 'ROM'; // Specific pattern around 1409
-    if (duration >= 300 && duration < 1400) return 'BINARY'; // Medium duration
-    if (duration >= 150 && duration < 300) return 'ARITH'; // Medium-low duration
-    if (duration >= 50 && duration < 150) return 'MEM'; // Low-medium duration
-    return 'INPUT'; // Very low duration tasks
+  // Extract task type from the actual name in the JSON
+  const getTaskType = (name) => {
+    if (!name) return 'UNKNOWN';
+    // Extract the part before the first underscore as the type
+    const parts = name.split('_');
+    return parts[0] || 'UNKNOWN';
   };
   
   return rawData.map((item, index) => {
     const duration = item.duration || 0;
-    const taskType = getTaskType(index, duration);
-    const taskName = item.name || `${taskType}_${index + 1}`;
+    const taskName = item.name || `UNKNOWN_${index + 1}`;
+    const taskType = getTaskType(taskName);
     const start = item.start !== undefined ? item.start : cumulativeStart;
     const end = item.end !== undefined ? item.end : start + duration;
     
@@ -177,13 +171,10 @@ const processData = (rawData) => {
     const displayName = `${taskName}[${count}] - ${formatTime(duration)}`;
     const colorScheme = getColorForTask(taskName);
     
-    // Get the type for simplified y-axis labels
-    const type = taskType;
-    
     return {
       name: displayName,
       originalName: taskName,
-      type: type, // Add type for y-axis labeling
+      type: taskType, // Use the extracted type from the name
       originalData: item,
       colorScheme: colorScheme,
       segments: [{
@@ -233,6 +224,26 @@ const getColorForTask = (taskName) => {
       secondary: '#991B1B',
       border: '#EF4444'
     },
+    'KECCAK': {
+      primary: '#7C2D12',
+      secondary: '#92400E',
+      border: '#EA580C'
+    },
+    'POSEIDON': {
+      primary: '#059669',
+      secondary: '#047857',
+      border: '#10B981'
+    },
+    'BYTE': {
+      primary: '#7C3AED',
+      secondary: '#6D28D9',
+      border: '#8B5CF6'
+    },
+    'PADDING': {
+      primary: '#DC2626',
+      secondary: '#B91C1C',
+      border: '#F87171'
+    },
     'DEFAULT': {
       primary: '#374151',
       secondary: '#1F2937',
@@ -281,11 +292,11 @@ const renderChart = async () => {
     // Convert microseconds to more readable units for display
     const formatTimeForDisplay = (microseconds) => {
       if (microseconds >= 1_000_000) {
-        return `${(microseconds / 1_000_000).toFixed(3)}s`;
+        return `${(microseconds / 1_000_000).toFixed(3)} s`;
       } else if (microseconds >= 1_000) {
-        return `${(microseconds / 1_000).toFixed(3)}ms`;
+        return `${(microseconds / 1_000).toFixed(3)} ms`;
       } else {
-        return `${microseconds.toFixed(0)}μs`;
+        return `${microseconds.toFixed(0)} μs`;
       }
     };
 
@@ -304,7 +315,7 @@ const renderChart = async () => {
         custom: {
           ...task.originalData,
           duration: durationMicros,
-          task: task.originalName.split('_')[0],
+          task: task.type,
           subtask: task.originalName.split('_')[1] || '',
           absoluteStartTime: startMin,
           absoluteEndTime: endMin,
@@ -315,46 +326,48 @@ const renderChart = async () => {
       };
     });
 
-    // Create simplified y-axis labels - only show unique types
-    const uniqueTypes = [];
-    const typesSeen = new Set();
-    const typeStats = {};
+    // Calculate total time and stats for each type from ALL tasks in allTasks (not just filtered)
+    const globalTypeStats = {};
+    const totalDurationMicros = allTasks.value.reduce((sum, task) => sum + task.segments[0].duration, 0);
     
-    // Calculate total time and stats for each type
-    // Calculate the actual total time from the data
-    const totalDurationMicros = tasks.reduce((sum, task) => sum + task.segments[0].duration, 0);
-    const totalExecutionTimeMin = totalDurationMicros / 60_000_000; // Convert to minutes
-    
-    tasks.forEach(task => {
+    // Calculate stats from all tasks to get global totals
+    allTasks.value.forEach(task => {
       const type = task.type;
-      if (!typeStats[type]) {
-        typeStats[type] = {
+      if (!globalTypeStats[type]) {
+        globalTypeStats[type] = {
           totalDuration: 0,
           count: 0
         };
       }
-      typeStats[type].totalDuration += task.segments[0].duration;
-      typeStats[type].count++;
-      
+      globalTypeStats[type].totalDuration += task.segments[0].duration;
+      globalTypeStats[type].count++;
+    });
+
+    // Create simplified y-axis labels - only show unique types from filtered tasks
+    const uniqueTypes = [];
+    const typesSeen = new Set();
+    
+    tasks.forEach(task => {
+      const type = task.type;
       if (!typesSeen.has(type)) {
         typesSeen.add(type);
         uniqueTypes.push(type);
       }
     });
 
-    // Create evenly distributed labels for y-axis with stats
+    // Create evenly distributed labels for y-axis with global stats
     const totalTasks = tasks.length;
     const yLabels = new Array(totalTasks).fill('');
     
     // Distribute unique types evenly across the y-axis
     uniqueTypes.forEach((type, index) => {
       const position = Math.floor((index + 0.5) * totalTasks / uniqueTypes.length);
-      const stats = typeStats[type];
-      const durationMicros = stats.totalDuration;
-      const percentage = ((stats.totalDuration / totalDurationMicros) * 100).toFixed(1);
+      const globalStats = globalTypeStats[type];
+      const durationMicros = globalStats.totalDuration;
+      const percentage = ((globalStats.totalDuration / totalDurationMicros) * 100).toFixed(1);
       const formattedDuration = formatTimeForDisplay(durationMicros);
       
-      yLabels[position] = `${type} (${percentage}% - ${formattedDuration})`;
+      yLabels[position] = `${type} - Total: ${formattedDuration} (${percentage}%)`;
     });
 
     const ChartJS = await import('chart.js');

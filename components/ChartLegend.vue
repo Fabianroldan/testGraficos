@@ -33,16 +33,65 @@ const filteredLegendItems = computed(() => {
 
 const uniqueCategories = computed(() => {
   const categories = props.chartData.map(item => item.custom?.task).filter(Boolean);
-  return [...new Set(categories)];
+  return [...new Set(categories)].sort();
 });
+
+const taskTypeStats = computed(() => {
+  if (!filteredLegendItems.value.length) return {};
+  
+  const stats = {};
+  
+  filteredLegendItems.value.forEach(item => {
+    const taskType = item.custom?.task;
+    const duration = item.custom?.duration ?? 0;
+    
+    if (!stats[taskType]) {
+      stats[taskType] = {
+        totalDuration: 0,
+        count: 0
+      };
+    }
+    
+    stats[taskType].totalDuration += duration;
+    stats[taskType].count++;
+  });
+  
+  // Debug: Log the data for verification
+  if (process.dev) {
+    console.log('Task type stats:', stats);
+  }
+  
+  return stats;
+});
+
+const formatDuration = (microseconds) => {
+  if (microseconds >= 60_000_000) {
+    // >= 60 seconds -> show in minutes
+    const minutes = microseconds / 60_000_000;
+    return `${minutes.toFixed(3)} min`;
+  } else if (microseconds >= 1_000_000) {
+    // >= 1 second -> show in seconds
+    const seconds = microseconds / 1_000_000;
+    return `${seconds.toFixed(3)} s`;
+  } else if (microseconds >= 1_000) {
+    // >= 1 millisecond -> show in milliseconds
+    const milliseconds = microseconds / 1_000;
+    return `${milliseconds.toFixed(3)} ms`;
+  } else {
+    // < 1 millisecond -> show in microseconds
+    return `${microseconds.toFixed(0)} μs`;
+  }
+};
 
 const totalDuration = computed(() => {
   if (!filteredLegendItems.value.length) return '0.00';
-  const starts = filteredLegendItems.value.map(item => item.custom?.absoluteStartTime ?? 0);
-  const ends = filteredLegendItems.value.map(item => (item.custom?.absoluteStartTime ?? 0) + (item.custom?.duration ?? 0));
-  const minStart = Math.min(...starts);
-  const maxEnd = Math.max(...ends);
-  return (maxEnd - minStart).toFixed(8);
+  
+  // Sum all individual task durations
+  const totalMicroseconds = filteredLegendItems.value.reduce((sum, item) => {
+    return sum + (item.custom?.duration ?? 0);
+  }, 0);
+  
+  return formatDuration(totalMicroseconds);
 });
 
 const clearAllFilters = () => {
@@ -57,7 +106,7 @@ const clearAllFilters = () => {
       <div class="px-4 py-3 border-b border-slate-200 bg-[#1E3D38]">
         <div class="flex items-center justify-between gap-3 mb-3">
           <h3 class="text-base font-semibold text-[#A3E635]">
-            Tasks ({{ chartData.length }})
+            Filtered Tasks ({{ filteredLegendItems.length }})
           </h3>
           <select 
             v-model="selectedCategory"
@@ -118,9 +167,30 @@ const clearAllFilters = () => {
           v-if="filteredLegendItems.length > 0" 
           class="mt-4 pt-3 border-t border-slate-200"
         >
-          <div class="flex justify-between text-sm text-[#A3E635]">
-            <span>{{ filteredLegendItems.length }} tasks</span>
-            <span>Total: {{ totalDuration }} min</span>
+          <!-- Task Type Statistics -->
+          <div class="mb-4">
+            <h4 class="text-sm font-semibold text-[#A3E635] mb-2">Duration by Task Type:</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div 
+                v-for="(stats, taskType) in taskTypeStats" 
+                :key="taskType"
+                class="bg-[#223c4a] rounded-lg p-2"
+              >
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-medium text-[#A3E635]">{{ taskType }}</span>
+                  <span class="text-xs text-[#A3E635] opacity-80">({{ stats.count }})</span>
+                </div>
+                <div class="text-sm text-[#A3E635] font-semibold">
+                  {{ formatDuration(stats.totalDuration) }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Total Summary -->
+          <div class="flex justify-between text-sm text-[#A3E635] pt-2 border-t border-slate-200">
+            <span>{{ filteredLegendItems.length }} tasks total</span>
+            <span>Total Duration: {{ totalDuration }}</span>
           </div>
         </div>
 
