@@ -102,8 +102,10 @@ const loadData = async () => {
     const ChartJS = await import('chart.js');
     const { Chart, BarController, BarElement, LinearScale, CategoryScale, Tooltip, Title } = ChartJS;
     const annotationPlugin = await import('chartjs-plugin-annotation');
+    const zoomPlugin = await import('chartjs-plugin-zoom');
     Chart.register(BarController, BarElement, LinearScale, CategoryScale, Tooltip, Title);
     Chart.register(annotationPlugin.default);
+    Chart.register(zoomPlugin.default);
 
     const response = await fetch(props.jsonPath);
     if (!response.ok) throw new Error('Error loading file');
@@ -495,8 +497,7 @@ const renderChart = async () => {
           },
           legend: {
             display: false
-          },
-          annotation: {
+          }, annotation: {
             annotations: {
               maxTimeLine: {
                 type: 'line',
@@ -519,6 +520,36 @@ const renderChart = async () => {
                   cornerRadius: 4
                 }
               }
+            }
+          },
+          zoom: {
+            pan: {
+              enabled: true,
+              mode: 'xy',
+              modifierKey: null,
+              onPanComplete: function ({ chart }) {
+                console.log('Pan completed');
+              }
+            },
+            zoom: {
+              wheel: {
+                enabled: true,
+                speed: 0.1
+              },
+              pinch: {
+                enabled: true
+              },
+              mode: 'xy',
+              drag: {
+                enabled: false
+              },
+              onZoomComplete: function ({ chart }) {
+                console.log('Zoom completed');
+              }
+            },
+            limits: {
+              x: { min: adjustedRange.min - (adjustedRange.max - adjustedRange.min), max: adjustedRange.max * 3 },
+              y: { min: -tasks.length * 0.5, max: tasks.length * 1.5 }
             }
           }
         }
@@ -545,6 +576,24 @@ const renderChart = async () => {
 onUnmounted(() => {
   if (chartInstance.value) chartInstance.value.destroy();
 });
+
+const resetZoom = () => {
+  if (chartInstance.value) {
+    chartInstance.value.resetZoom();
+  }
+};
+
+const zoomIn = () => {
+  if (chartInstance.value) {
+    chartInstance.value.zoom(1.2);
+  }
+};
+
+const zoomOut = () => {
+  if (chartInstance.value) {
+    chartInstance.value.zoom(0.8);
+  }
+};
 </script>
 
 <template>
@@ -567,7 +616,32 @@ onUnmounted(() => {
           :max-time="timeRange.max" :config="config" @config-change="handleConfigChange" />
       </div>
 
-      <div class="flex-1 w-full max-w-[1800px] mx-auto mb-6">
+      <div class="flex-1 w-full max-w-[1800px] mx-auto mb-6 relative">
+        <div class="absolute top-4 right-4 z-10 flex flex-col gap-2">
+          <button @click="zoomIn"
+            class="bg-primary-dark border border-white text-accent-text hover:bg-[#2A5751] px-3 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center"
+            title="Zoom In">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </button>
+          <button @click="zoomOut"
+            class="bg-primary-dark border border-white text-accent-text hover:bg-[#2A5751] px-3 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center"
+            title="Zoom Out">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 12H6" />
+            </svg>
+          </button>
+          <button @click="resetZoom"
+            class="bg-primary-dark border border-white text-accent-text hover:bg-[#2A5751] px-3 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center"
+            title="Reset Zoom">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+
         <ClientOnly>
           <div
             class="rounded-lg border-2 border-white shadow-sm p-4 w-full h-full min-h-[500px] mx-auto flex items-center justify-center bg-[#1E3D38]">
