@@ -63,29 +63,32 @@ const taskTypeStats = computed(() => {
   return stats;
 });
 
-const formatDuration = (microseconds) => {
-  if (microseconds >= 60_000_000) {
-    const minutes = microseconds / 60_000_000;
+const formatDuration = (nanoseconds) => {
+  if (nanoseconds >= 60_000_000_000) {
+    const minutes = nanoseconds / 60_000_000_000;
     return `${minutes.toFixed(3)} min`;
-  } else if (microseconds >= 1_000_000) {
-    const seconds = microseconds / 1_000_000;
+  } else if (nanoseconds >= 1_000_000_000) {
+    const seconds = nanoseconds / 1_000_000_000;
     return `${seconds.toFixed(3)} s`;
-  } else if (microseconds >= 1_000) {
-    const milliseconds = microseconds / 1_000;
+  } else if (nanoseconds >= 1_000_000) {
+    const milliseconds = nanoseconds / 1_000_000;
     return `${milliseconds.toFixed(3)} ms`;
+  } else if (nanoseconds >= 1_000) {
+    const microseconds = nanoseconds / 1_000;
+    return `${microseconds.toFixed(3)} μs`;
   } else {
-    return `${microseconds.toFixed(0)} μs`;
+    return `${nanoseconds.toFixed(0)} ns`;
   }
 };
 
 const totalDuration = computed(() => {
   if (!filteredLegendItems.value.length) return '0.00';
 
-  const totalMicroseconds = filteredLegendItems.value.reduce((sum, item) => {
+  const totalNanoseconds = filteredLegendItems.value.reduce((sum, item) => {
     return sum + (item.custom?.duration ?? 0);
   }, 0);
 
-  return formatDuration(totalMicroseconds);
+  return formatDuration(totalNanoseconds);
 });
 
 const clearAllFilters = () => {

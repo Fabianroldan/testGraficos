@@ -35,8 +35,8 @@ const timeRange = computed(() => {
   if (!allTasks.value.length) return { min: 0, max: 0 };
 
   const allTimes = allTasks.value.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
-  const minTime = Math.min(...allTimes) / 60_000_000;
-  const maxTime = Math.max(...allTimes) / 60_000_000;
+  const minTime = Math.min(...allTimes) / 60_000_000_000;
+  const maxTime = Math.max(...allTimes) / 60_000_000_000;
 
   return { min: minTime, max: maxTime };
 });
@@ -62,13 +62,13 @@ const filteredTasks = computed(() => {
   }
 
   if (config.value.timeMode === 'custom') {
-    const startMicros = config.value.startTime * 60_000_000;
-    const endMicros = config.value.endTime * 60_000_000;
+    const startNanos = config.value.startTime * 60_000_000_000;
+    const endNanos = config.value.endTime * 60_000_000_000;
 
     filtered = filtered.filter(task => {
       const taskStart = task.segments[0].start;
       const taskEnd = task.segments[0].end;
-      return taskStart < endMicros && taskEnd > startMicros;
+      return taskStart < endNanos && taskEnd > startNanos;
     });
   }
 
@@ -222,17 +222,29 @@ const getColorForTask = (taskName) => {
       secondary: '#BE185D',
       border: '#EC4899'
     },
+    'MT': {
+      primary: '#059669',
+      secondary: '#047857',
+      border: '#10B981'
+    },
+    'DEFAULT': {
+      primary: '#6B7280',
+      secondary: '#4B5563',
+      border: '#9CA3AF'
+    }
   };
   return colorMap[type] || colorMap.DEFAULT;
 };
 
 const formatTime = (time) => {
-  if (time >= 1_000_000) {
-    return `${(time / 1_000_000).toFixed(3)}s`;
+  if (time >= 1_000_000_000) {
+    return `${(time / 1_000_000_000).toFixed(3)}s`;
+  } else if (time >= 1_000_000) {
+    return `${(time / 1_000_000).toFixed(3)}ms`;
   } else if (time >= 1_000) {
-    return `${(time / 1_000).toFixed(3)}ms`;
+    return `${(time / 1_000).toFixed(3)}μs`;
   } else {
-    return `${time.toFixed(0)}μs`;
+    return `${time.toFixed(0)}ns`;
   }
 };
 
@@ -261,21 +273,23 @@ const renderChart = async () => {
       max: timeRangeMin < 0.000001 ? range.min + 0.000001 : range.max
     };
 
-    const formatTimeForDisplay = (microseconds) => {
-      if (microseconds >= 1_000_000) {
-        return `${(microseconds / 1_000_000).toFixed(3)} s`;
-      } else if (microseconds >= 1_000) {
-        return `${(microseconds / 1_000).toFixed(3)} ms`;
+    const formatTimeForDisplay = (nanoseconds) => {
+      if (nanoseconds >= 1_000_000_000) {
+        return `${(nanoseconds / 1_000_000_000).toFixed(3)} s`;
+      } else if (nanoseconds >= 1_000_000) {
+        return `${(nanoseconds / 1_000_000).toFixed(3)} ms`;
+      } else if (nanoseconds >= 1_000) {
+        return `${(nanoseconds / 1_000).toFixed(3)} μs`;
       } else {
-        return `${microseconds.toFixed(0)} μs`;
+        return `${nanoseconds.toFixed(0)} ns`;
       }
     };
 
     const data = tasks.map(task => {
       const colorScheme = task.colorScheme;
-      const startMin = task.segments[0].start / 60_000_000;
-      const endMin = task.segments[0].end / 60_000_000;
-      const durationMicros = task.segments[0].duration;
+      const startMin = task.segments[0].start / 60_000_000_000;
+      const endMin = task.segments[0].end / 60_000_000_000;
+      const durationNanos = task.segments[0].duration;
       return {
         x: [startMin, endMin],
         y: task.name,
@@ -285,12 +299,12 @@ const renderChart = async () => {
         hoverBorderColor: colorScheme.secondary,
         custom: {
           ...task.originalData,
-          duration: durationMicros,
+          duration: durationNanos,
           task: task.type,
           subtask: task.originalName.split('_')[1] || '',
           absoluteStartTime: startMin,
           absoluteEndTime: endMin,
-          formattedDuration: formatTimeForDisplay(durationMicros),
+          formattedDuration: formatTimeForDisplay(durationNanos),
           formattedAbsoluteStart: startMin.toFixed(8) + ' min',
           formattedAbsoluteEnd: endMin.toFixed(8) + ' min'
         }
@@ -298,7 +312,7 @@ const renderChart = async () => {
     });
 
     const globalTypeStats = {};
-    const totalDurationMicros = allTasks.value.reduce((sum, task) => sum + task.segments[0].duration, 0);
+    const totalDurationNanos = allTasks.value.reduce((sum, task) => sum + task.segments[0].duration, 0);
 
     allTasks.value.forEach(task => {
       const type = task.type;
@@ -329,9 +343,9 @@ const renderChart = async () => {
     uniqueTypes.forEach((type, index) => {
       const position = Math.floor((index + 0.5) * totalTasks / uniqueTypes.length);
       const globalStats = globalTypeStats[type];
-      const durationMicros = globalStats.totalDuration;
-      const percentage = ((globalStats.totalDuration / totalDurationMicros) * 100).toFixed(1);
-      const formattedDuration = formatTimeForDisplay(durationMicros);
+      const durationNanos = globalStats.totalDuration;
+      const percentage = ((globalStats.totalDuration / totalDurationNanos) * 100).toFixed(1);
+      const formattedDuration = formatTimeForDisplay(durationNanos);
 
       yLabels[position] = `${type} - Total: ${formattedDuration} (${percentage}%)`;
     });

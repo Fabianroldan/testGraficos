@@ -84,12 +84,12 @@ const uniqueTypesCount = computed(() => {
 });
 
 const totalDurationInSeconds = computed(() => {
-    return (totalDurationSum.value / 1_000_000).toFixed(3);
+    return (totalDurationSum.value / 1_000_000_000).toFixed(3);
 });
 
 const timeRangeFilteredInSeconds = computed(() => {
-    const rangeMicros = (props.timeRange.max - props.timeRange.min) * 60_000_000;
-    const rangeSeconds = rangeMicros / 1_000_000;
+    const rangeMicros = (props.timeRange.max - props.timeRange.min) * 60_000_000_000;
+    const rangeSeconds = rangeMicros / 1_000_000_000;
     
     if (rangeSeconds >= 60) {
         const rangeMinutes = rangeSeconds / 60;
@@ -100,17 +100,19 @@ const timeRangeFilteredInSeconds = computed(() => {
 });
 
 const formattedTimeRangeFiltered = computed(() => {
-    const rangeMicros = (props.timeRange.max - props.timeRange.min) * 60_000_000;
+    const rangeMicros = (props.timeRange.max - props.timeRange.min) * 60_000_000_000;
     return formatTime(rangeMicros);
 });
 
 const formatTime = (time) => {
-    if (time >= 1_000_000) {
-        return `${(time / 1_000_000).toFixed(3)}s`;
+    if (time >= 1_000_000_000) {
+        return `${(time / 1_000_000_000).toFixed(3)}s`;
+    } else if (time >= 1_000_000) {
+        return `${(time / 1_000_000).toFixed(3)}ms`;
     } else if (time >= 1_000) {
-        return `${(time / 1_000).toFixed(3)}ms`;
+        return `${(time / 1_000).toFixed(3)}μs`;
     } else {
-        return `${time.toFixed(0)}μs`;
+        return `${time.toFixed(0)}ns`;
     }
 };
 
