@@ -35,8 +35,8 @@ const timeRange = computed(() => {
   if (!allTasks.value.length) return { min: 0, max: 0 };
 
   const allTimes = allTasks.value.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
-  const minTime = Math.min(...allTimes) / 60_000_000_000;
-  const maxTime = Math.max(...allTimes) / 60_000_000_000;
+  const minTime = Math.min(...allTimes) / 1_000_000_000;
+  const maxTime = Math.max(...allTimes) / 1_000_000_000;
 
   return { min: minTime, max: maxTime };
 });
@@ -62,8 +62,8 @@ const filteredTasks = computed(() => {
   }
 
   if (config.value.timeMode === 'custom') {
-    const startNanos = config.value.startTime * 60_000_000_000;
-    const endNanos = config.value.endTime * 60_000_000_000;
+    const startNanos = config.value.startTime * 1_000_000_000;
+    const endNanos = config.value.endTime * 1_000_000_000;
 
     filtered = filtered.filter(task => {
       const taskStart = task.segments[0].start;
@@ -262,15 +262,14 @@ const renderChart = async () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     const tasks = filteredTasks.value;
-    const range = effectiveTimeRange.value;
-
-    const minTimeMin = range.min;
-    const maxTimeMin = range.max;
-    const timeRangeMin = maxTimeMin - minTimeMin;
+    const range = timeRange.value;
+    const minTimeSec = range.min;
+    const maxTimeSec = range.max;
+    const timeRangeSec = maxTimeSec - minTimeSec;
 
     const adjustedRange = {
       min: range.min,
-      max: timeRangeMin < 0.000001 ? range.min + 0.000001 : range.max
+      max: timeRangeSec < 0.000001 ? range.min + 0.000001 : range.max
     };
 
     const formatTimeForDisplay = (nanoseconds) => {
@@ -287,11 +286,11 @@ const renderChart = async () => {
 
     const data = tasks.map(task => {
       const colorScheme = task.colorScheme;
-      const startMin = task.segments[0].start / 60_000_000_000;
-      const endMin = task.segments[0].end / 60_000_000_000;
+      const startSec = task.segments[0].start / 1_000_000_000;
+      const endSec = task.segments[0].end / 1_000_000_000;
       const durationNanos = task.segments[0].duration;
       return {
-        x: [startMin, endMin],
+        x: [startSec, endSec],
         y: task.name,
         backgroundColor: colorScheme.primary + 'E6',
         borderColor: colorScheme.border,
@@ -302,11 +301,11 @@ const renderChart = async () => {
           duration: durationNanos,
           task: task.type,
           subtask: task.originalName.split('_')[1] || '',
-          absoluteStartTime: startMin,
-          absoluteEndTime: endMin,
+          absoluteStartTime: startSec,
+          absoluteEndTime: endSec,
           formattedDuration: formatTimeForDisplay(durationNanos),
-          formattedAbsoluteStart: startMin.toFixed(8) + ' min',
-          formattedAbsoluteEnd: endMin.toFixed(8) + ' min'
+          formattedAbsoluteStart: startSec.toFixed(8) + ' s',
+          formattedAbsoluteEnd: endSec.toFixed(8) + ' s'
         }
       };
     });
@@ -398,7 +397,7 @@ const renderChart = async () => {
             display: true,
             title: {
               display: true,
-              text: 'Absolute time (minutes)',
+              text: 'Absolute time (seconds)',
               color: '#A3E635',
               font: {
                 size: 13,
@@ -416,13 +415,13 @@ const renderChart = async () => {
               },
               maxTicksLimit: 10,
               callback: v => {
-                if (timeRangeMin < 0.000001) return `${v.toFixed(8)} min`;
-                if (timeRangeMin < 0.00001) return `${v.toFixed(7)} min`;
-                if (timeRangeMin < 0.0001) return `${v.toFixed(6)} min`;
-                if (timeRangeMin < 0.001) return `${v.toFixed(5)} min`;
-                if (timeRangeMin < 0.01) return `${v.toFixed(4)} min`;
-                if (timeRangeMin < 0.1) return `${v.toFixed(3)} min`;
-                return `${v.toFixed(2)} min`;
+                if (timeRangeSec < 0.000001) return `${v.toFixed(8)} s`;
+                if (timeRangeSec < 0.00001) return `${v.toFixed(7)} s`;
+                if (timeRangeSec < 0.0001) return `${v.toFixed(6)} s`;
+                if (timeRangeSec < 0.001) return `${v.toFixed(5)} s`;
+                if (timeRangeSec < 0.01) return `${v.toFixed(4)} s`;
+                if (timeRangeSec < 0.1) return `${v.toFixed(3)} s`;
+                return `${v.toFixed(2)} s`;
               }
             },
             grid: {
@@ -522,7 +521,7 @@ const renderChart = async () => {
                 borderDash: [5, 5],
                 label: {
                   display: true,
-                  content: `End time: ${adjustedRange.max.toFixed(2)} min`,
+                  content: `End time: ${adjustedRange.max.toFixed(2)} s`,
                   position: 'end',
                   backgroundColor: 'rgba(239, 68, 68, 0.8)',
                   color: '#FFFFFF',

@@ -8,7 +8,7 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl w-full">
                 <div class="bg-slate-700/30 rounded-lg p-5 border border-white/50">
                     <div class="text-sm text-slate-300 mb-2">Time Range Used</div>
-                    <div class="text-2xl font-bold text-[#A3E635]">{{ timeRangeFilteredInSeconds }}</div>
+                    <div class="text-2xl font-bold text-[#A3E635]">{{ timeRangeFilteredInSeconds }} s</div>
                     <div class="text-xs text-slate-400 mt-2">{{ formattedTimeRangeFiltered }}</div>
                 </div>
 
@@ -88,20 +88,13 @@ const totalDurationInSeconds = computed(() => {
 });
 
 const timeRangeFilteredInSeconds = computed(() => {
-    const rangeMicros = (props.timeRange.max - props.timeRange.min) * 60_000_000_000;
-    const rangeSeconds = rangeMicros / 1_000_000_000;
-    
-    if (rangeSeconds >= 60) {
-        const rangeMinutes = rangeSeconds / 60;
-        return `${rangeMinutes.toFixed(2)} min`;
-    }
-    
-    return `${rangeSeconds.toFixed(3)} s`;
+    const rangeSeconds = props.timeRange.max - props.timeRange.min;
+    return rangeSeconds.toFixed(3);
 });
 
 const formattedTimeRangeFiltered = computed(() => {
-    const rangeMicros = (props.timeRange.max - props.timeRange.min) * 60_000_000_000;
-    return formatTime(rangeMicros);
+    const rangeNanos = (props.timeRange.max - props.timeRange.min) * 1_000_000_000;
+    return formatTime(rangeNanos);
 });
 
 const formatTime = (time) => {

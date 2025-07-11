@@ -42,13 +42,13 @@
 
                     <div v-if="localConfig.timeMode === 'custom'" class="pl-6 space-y-2">
                         <div>
-                            <label class="block text-sm text-slate-300 mb-1">Start time (minutes):</label>
+                            <label class="block text-sm text-slate-300 mb-1">Start time (seconds):</label>
                             <input type="number" v-model.number="localConfig.startTime" :min="minTime" :max="maxTime"
                                 step="0.000001"
                                 class="w-full px-3 py-2 bg-slate-700 border border-white rounded text-slate-200 focus:ring-[#A3E635] focus:border-[#A3E635]">
                         </div>
                         <div>
-                            <label class="block text-sm text-slate-300 mb-1">End time (minutes):</label>
+                            <label class="block text-sm text-slate-300 mb-1">End time (seconds):</label>
                             <input type="number" v-model.number="localConfig.endTime" :min="minTime" :max="maxTime"
                                 step="0.000001"
                                 class="w-full px-3 py-2 bg-slate-700 border border-white rounded text-slate-200 focus:ring-[#A3E635] focus:border-[#A3E635]">
