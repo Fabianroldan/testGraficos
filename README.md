@@ -1,75 +1,44 @@
-# Nuxt Minimal Starter
-
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
-
-## Setup
-
-Make sure to install dependencies:
-
+### 1. Clone repository
 ```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
+git clone https://github.com/0xPolygonHermez/zisk-profiler.git
+cd nuxt
 ```
 
-## Development Server
+### 2. Install dependencies
+```bash
+npm install
+```
 
-Start the development server on `http://localhost:3000`:
+### 3. Run in development
+```bash
+npm run dev
+```
+
+Open http://localhost:3000 in your browser.
+
+## 📁 Project Structure
+
+```
+nuxt/
+├── components/          # Vue components
+│   ├── Chart.vue       # Main chart component
+│   ├── ChartConfig.vue # Chart configuration
+│   ├── ChartLegend.vue # Chart legend
+│   └── ChartStats.vue  # Statistics
+├── pages/              # Application pages
+└── public/data/        # JSON data
+```
+
+## 🎯 Available Commands
 
 ```bash
-# npm
+# Development
 npm run dev
 
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
-```
-
-## Production
-
-Build the application for production:
-
-```bash
-# npm
+# Production
 npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
 npm run preview
 
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
+# Generate static
+npm run generate
 ```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

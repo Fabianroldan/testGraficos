@@ -9,7 +9,6 @@ const chartInstance = ref(null);
 const loading = ref(true);
 const error = ref(null);
 const isMounted = ref(false);
-const rawData = ref([]);
 const allTasks = ref([]);
 const isRendering = ref(false);
 
@@ -35,8 +34,8 @@ const timeRange = computed(() => {
   if (!allTasks.value.length) return { min: 0, max: 0 };
 
   const allTimes = allTasks.value.flatMap(t => t.segments.flatMap(s => [s.start, s.end]));
-  const minTime = Math.min(...allTimes) / 1_000_000_000;
-  const maxTime = Math.max(...allTimes) / 1_000_000_000;
+  const minTime = Math.min(...allTimes) / 60_000_000_000;
+  const maxTime = Math.max(...allTimes) / 60_000_000_000;
 
   return { min: minTime, max: maxTime };
 });
@@ -62,14 +61,24 @@ const filteredTasks = computed(() => {
   }
 
   if (config.value.timeMode === 'custom') {
-    const startNanos = config.value.startTime * 1_000_000_000;
-    const endNanos = config.value.endTime * 1_000_000_000;
+    const startNanos = config.value.startTime * 60_000_000_000;
+    const endNanos = config.value.endTime * 60_000_000_000;
 
-    filtered = filtered.filter(task => {
+    filtered = filtered.map(task => {
       const taskStart = task.segments[0].start;
       const taskEnd = task.segments[0].end;
-      return taskStart < endNanos && taskEnd > startNanos;
+      const isInRange = taskStart < endNanos && taskEnd > startNanos;
+      
+      return {
+        ...task,
+        isInTimeRange: isInRange
+      };
     });
+  } else {
+    filtered = filtered.map(task => ({
+      ...task,
+      isInTimeRange: true
+    }));
   }
 
   return filtered;
@@ -111,7 +120,6 @@ const loadData = async () => {
     if (!response.ok) throw new Error('Error loading file');
     const data = await response.json();
 
-    rawData.value = data;
     allTasks.value = processData(data);
 
     if (!allTasks.value.length) throw new Error('No valid data in JSON');
@@ -128,7 +136,6 @@ const loadData = async () => {
     renderChart();
   } catch (err) {
     error.value = err.message;
-    console.error('Error:', err);
   } finally {
     loading.value = false;
   }
@@ -262,14 +269,13 @@ const renderChart = async () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     const tasks = filteredTasks.value;
-    const range = timeRange.value;
-    const minTimeSec = range.min;
-    const maxTimeSec = range.max;
-    const timeRangeSec = maxTimeSec - minTimeSec;
+    const range = effectiveTimeRange.value;
+
+    const timeRangeMin = range.max - range.min;
 
     const adjustedRange = {
       min: range.min,
-      max: timeRangeSec < 0.000001 ? range.min + 0.000001 : range.max
+      max: timeRangeMin < 0.000001 ? range.min + 0.000001 : range.max
     };
 
     const formatTimeForDisplay = (nanoseconds) => {
@@ -286,26 +292,32 @@ const renderChart = async () => {
 
     const data = tasks.map(task => {
       const colorScheme = task.colorScheme;
-      const startSec = task.segments[0].start / 1_000_000_000;
-      const endSec = task.segments[0].end / 1_000_000_000;
+      const startMin = task.segments[0].start / 60_000_000_000;
+      const endMin = task.segments[0].end / 60_000_000_000;
       const durationNanos = task.segments[0].duration;
+      
+      const isInRange = task.isInTimeRange !== false;
+      const opacity = isInRange ? 'E6' : '66';
+      const hoverOpacity = isInRange ? 'F2' : '99';
+      
       return {
-        x: [startSec, endSec],
+        x: [startMin, endMin],
         y: task.name,
-        backgroundColor: colorScheme.primary + 'E6',
-        borderColor: colorScheme.border,
-        hoverBackgroundColor: colorScheme.primary + 'F2',
-        hoverBorderColor: colorScheme.secondary,
+        backgroundColor: colorScheme.primary + opacity,
+        borderColor: colorScheme.border + (isInRange ? '' : '80'),
+        hoverBackgroundColor: colorScheme.primary + hoverOpacity,
+        hoverBorderColor: colorScheme.secondary + (isInRange ? '' : '80'),
         custom: {
           ...task.originalData,
           duration: durationNanos,
           task: task.type,
           subtask: task.originalName.split('_')[1] || '',
-          absoluteStartTime: startSec,
-          absoluteEndTime: endSec,
+          absoluteStartTime: startMin,
+          absoluteEndTime: endMin,
           formattedDuration: formatTimeForDisplay(durationNanos),
-          formattedAbsoluteStart: startSec.toFixed(8) + ' s',
-          formattedAbsoluteEnd: endSec.toFixed(8) + ' s'
+          formattedAbsoluteStart: startMin.toFixed(8) + ' min',
+          formattedAbsoluteEnd: endMin.toFixed(8) + ' min',
+          isInTimeRange: isInRange
         }
       };
     });
@@ -353,7 +365,7 @@ const renderChart = async () => {
     const { Chart } = ChartJS;
 
     if (!chartRef.value) {
-      console.error('Canvas element not available');
+      error.value = 'Canvas element not available';
       return;
     }
 
@@ -362,7 +374,7 @@ const renderChart = async () => {
       data: {
         labels: tasks.map(task => task.name),
         datasets: [{
-          label: 'Tareas',
+          label: 'Tasks',
           data,
           backgroundColor: data.map(d => d.backgroundColor),
           borderColor: data.map(d => d.borderColor),
@@ -397,7 +409,7 @@ const renderChart = async () => {
             display: true,
             title: {
               display: true,
-              text: 'Absolute time (seconds)',
+              text: 'Absolute time (minutes)',
               color: '#A3E635',
               font: {
                 size: 13,
@@ -415,13 +427,13 @@ const renderChart = async () => {
               },
               maxTicksLimit: 10,
               callback: v => {
-                if (timeRangeSec < 0.000001) return `${v.toFixed(8)} s`;
-                if (timeRangeSec < 0.00001) return `${v.toFixed(7)} s`;
-                if (timeRangeSec < 0.0001) return `${v.toFixed(6)} s`;
-                if (timeRangeSec < 0.001) return `${v.toFixed(5)} s`;
-                if (timeRangeSec < 0.01) return `${v.toFixed(4)} s`;
-                if (timeRangeSec < 0.1) return `${v.toFixed(3)} s`;
-                return `${v.toFixed(2)} s`;
+                if (timeRangeMin < 0.000001) return `${v.toFixed(8)} min`;
+                if (timeRangeMin < 0.00001) return `${v.toFixed(7)} min`;
+                if (timeRangeMin < 0.0001) return `${v.toFixed(6)} min`;
+                if (timeRangeMin < 0.001) return `${v.toFixed(5)} min`;
+                if (timeRangeMin < 0.01) return `${v.toFixed(4)} min`;
+                if (timeRangeMin < 0.1) return `${v.toFixed(3)} min`;
+                return `${v.toFixed(2)} min`;
               }
             },
             grid: {
@@ -468,7 +480,7 @@ const renderChart = async () => {
               padding: 8,
               maxRotation: 0,
               minRotation: 0,
-              callback: function (value, index, values) {
+              callback: function (value, index) {
                 return yLabels[index] || '';
               }
             },
@@ -500,11 +512,26 @@ const renderChart = async () => {
             callbacks: {
               label: (ctx) => {
                 const custom = ctx.raw?.custom || {};
-                return [
-                  `Inicio: ${custom.formattedAbsoluteStart}`,
-                  `Final: ${custom.formattedAbsoluteEnd}`,
-                  `Duración: ${custom.formattedDuration}`,
+                const labels = [
+                  `Start: ${custom.formattedAbsoluteStart}`,
+                  `End: ${custom.formattedAbsoluteEnd}`,
+                  `Duration: ${custom.formattedDuration}`,
                 ];
+                
+                if (custom.isInTimeRange === false) {
+                  labels.push(`⚠️ Outside selected time range`);
+                }
+                
+                return labels;
+              },
+              labelColor: (ctx) => {
+                const custom = ctx.raw?.custom || {};
+                const isInRange = custom.isInTimeRange !== false;
+                
+                return {
+                  borderColor: isInRange ? ctx.dataset.borderColor[ctx.dataIndex] : '#9CA3AF',
+                  backgroundColor: isInRange ? ctx.dataset.backgroundColor[ctx.dataIndex] : '#6B7280'
+                };
               }
             }
           },
@@ -512,27 +539,52 @@ const renderChart = async () => {
             display: false
           }, annotation: {
             annotations: {
-              maxTimeLine: {
-                type: 'line',
-                xMin: adjustedRange.max,
-                xMax: adjustedRange.max,
-                borderColor: '#EF4444',
-                borderWidth: 2,
-                borderDash: [5, 5],
-                label: {
-                  display: true,
-                  content: `End time: ${adjustedRange.max.toFixed(2)} s`,
-                  position: 'end',
-                  backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                  color: '#FFFFFF',
-                  font: {
-                    size: 11,
-                    weight: '600'
-                  },
-                  padding: 4,
-                  cornerRadius: 4
+              ...(config.value.timeMode === 'custom' && {
+                minTimeLine: {
+                  type: 'line',
+                  xMin: adjustedRange.min,
+                  xMax: adjustedRange.min,
+                  borderColor: '#22C55E',
+                  borderWidth: 2,
+                  borderDash: [5, 5],
+                  label: {
+                    display: true,
+                    content: `Start time: ${adjustedRange.min.toFixed(2)} min`,
+                    position: 'start',
+                    backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                    color: '#FFFFFF',
+                    font: {
+                      size: 11,
+                      weight: '600'
+                    },
+                    padding: 4,
+                    cornerRadius: 4
+                  }
                 }
-              }
+              }),
+              ...(config.value.timeMode === 'custom' && {
+                maxTimeLine: {
+                  type: 'line',
+                  xMin: adjustedRange.max,
+                  xMax: adjustedRange.max,
+                  borderColor: '#EF4444',
+                  borderWidth: 2,
+                  borderDash: [5, 5],
+                  label: {
+                    display: true,
+                    content: `End time: ${adjustedRange.max.toFixed(2)} min`,
+                    position: 'end',
+                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                    color: '#FFFFFF',
+                    font: {
+                      size: 11,
+                      weight: '600'
+                    },
+                    padding: 4,
+                    cornerRadius: 4
+                  }
+                }
+              })
             }
           },
           zoom: {
@@ -540,9 +592,6 @@ const renderChart = async () => {
               enabled: true,
               mode: 'xy',
               modifierKey: null,
-              onPanComplete: function ({ chart }) {
-                console.log('Pan completed');
-              }
             },
             zoom: {
               wheel: {
@@ -556,12 +605,12 @@ const renderChart = async () => {
               drag: {
                 enabled: false
               },
-              onZoomComplete: function ({ chart }) {
-                console.log('Zoom completed');
-              }
             },
             limits: {
-              x: { min: adjustedRange.min - (adjustedRange.max - adjustedRange.min), max: adjustedRange.max * 3 },
+              x: { 
+                min: timeRange.value.min - (timeRange.value.max - timeRange.value.min) * 0.5, 
+                max: timeRange.value.max + (timeRange.value.max - timeRange.value.min) * 0.5 
+              },
               y: { min: -tasks.length * 0.5, max: tasks.length * 1.5 }
             }
           }
@@ -579,7 +628,6 @@ const renderChart = async () => {
     chartRef.value.style.height = `${totalHeight}px`;
     chartRef.value.style.width = '80%';
   } catch (chartError) {
-    console.error('Error rendering chart:', chartError);
     error.value = 'Error rendering chart';
   } finally {
     isRendering.value = false;
@@ -624,11 +672,6 @@ const zoomOut = () => {
     </div>
 
     <div class="flex-1 w-full px-4 py-6 flex flex-col">
-      <div class="w-full max-w-[1800px] mx-auto mb-6">
-        <ChartConfig v-if="isMounted && allTasks.length > 0" :available-types="availableTypes" :min-time="timeRange.min"
-          :max-time="timeRange.max" :config="config" @config-change="handleConfigChange" />
-      </div>
-
       <div class="flex-1 w-full max-w-[1800px] mx-auto mb-6 relative">
         <div class="absolute top-4 right-4 z-10 flex flex-col gap-2">
           <button @click="zoomIn"
@@ -674,6 +717,11 @@ const zoomOut = () => {
             </div>
           </template>
         </ClientOnly>
+      </div>
+
+      <div class="w-full max-w-[1800px] mx-auto mb-6">
+        <ChartConfig v-if="isMounted && allTasks.length > 0" :available-types="availableTypes" :min-time="timeRange.min"
+          :max-time="timeRange.max" :config="config" @config-change="handleConfigChange" />
       </div>
 
       <div class="w-full max-w-[1800px] mx-auto space-y-6 pb-6">

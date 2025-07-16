@@ -20,8 +20,13 @@
 
                 <div class="bg-slate-700/30 rounded-lg p-5 border border-white/50">
                     <div class="text-sm text-slate-300 mb-2">Tasks in Range</div>
-                    <div class="text-2xl font-bold text-purple-400">{{ taskCount }}</div>
-                    <div class="text-xs text-slate-400 mt-2">{{ uniqueTypesCount }} unique types</div>
+                    <div class="text-2xl font-bold text-purple-400">{{ tasksInRangeCount }} / {{ taskCount }}</div>
+                    <div class="text-xs text-slate-400 mt-2">
+                        {{ uniqueTypesCount }} unique types
+                        <span v-if="tasksOutOfRangeCount > 0" class="block text-orange-400 mt-1">
+                            {{ tasksOutOfRangeCount }} outside range
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -41,6 +46,9 @@
                         <div class="text-sm text-slate-300 space-y-1">
                             <div>Duration: {{ type.formattedDuration }}</div>
                             <div>Tasks: {{ type.count }}</div>
+                            <div v-if="type.countOutOfRange > 0" class="text-orange-400 text-xs">
+                                + {{ type.countOutOfRange }} outside range ({{ type.formattedDurationOutOfRange }})
+                            </div>
                             <div class="w-full bg-slate-600 rounded-full h-2">
                                 <div class="h-2 rounded-full transition-all duration-300"
                                     :style="{ width: type.percentage + '%', backgroundColor: type.color || '#A3E635' }">
@@ -72,11 +80,22 @@ const props = defineProps({
 
 const totalDurationSum = computed(() => {
     return props.filteredTasks.reduce((sum, task) => {
-        return sum + task.segments.reduce((segSum, segment) => segSum + segment.duration, 0);
+        if (task.isInTimeRange !== false) {
+            return sum + task.segments.reduce((segSum, segment) => segSum + segment.duration, 0);
+        }
+        return sum;
     }, 0);
 });
 
 const taskCount = computed(() => props.filteredTasks.length);
+
+const tasksInRangeCount = computed(() => {
+    return props.filteredTasks.filter(task => task.isInTimeRange !== false).length;
+});
+
+const tasksOutOfRangeCount = computed(() => {
+    return props.filteredTasks.filter(task => task.isInTimeRange === false).length;
+});
 
 const uniqueTypesCount = computed(() => {
     const types = new Set(props.filteredTasks.map(task => task.type));
@@ -118,15 +137,27 @@ const typeBreakdown = computed(() => {
 
     props.filteredTasks.forEach(task => {
         const type = task.type;
+        const isInRange = task.isInTimeRange !== false;
+        
         if (!typeStats[type]) {
             typeStats[type] = {
                 duration: 0,
+                durationOutOfRange: 0,
                 count: 0,
+                countOutOfRange: 0,
                 color: task.colorScheme.primary
             };
         }
-        typeStats[type].duration += task.segments.reduce((sum, seg) => sum + seg.duration, 0);
-        typeStats[type].count++;
+        
+        const taskDuration = task.segments.reduce((sum, seg) => sum + seg.duration, 0);
+        
+        if (isInRange) {
+            typeStats[type].duration += taskDuration;
+            typeStats[type].count++;
+        } else {
+            typeStats[type].durationOutOfRange += taskDuration;
+            typeStats[type].countOutOfRange++;
+        }
     });
 
     const total = totalDurationSum.value;
@@ -135,9 +166,12 @@ const typeBreakdown = computed(() => {
         .map(([name, stats]) => ({
             name,
             duration: stats.duration,
+            durationOutOfRange: stats.durationOutOfRange,
             count: stats.count,
+            countOutOfRange: stats.countOutOfRange,
             percentage: total > 0 ? ((stats.duration / total) * 100).toFixed(1) : '0.0',
             formattedDuration: formatTime(stats.duration),
+            formattedDurationOutOfRange: formatTime(stats.durationOutOfRange),
             color: stats.color
         }))
         .sort((a, b) => b.duration - a.duration);

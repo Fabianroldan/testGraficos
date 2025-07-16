@@ -44,21 +44,25 @@ const taskTypeStats = computed(() => {
   filteredLegendItems.value.forEach(item => {
     const taskType = item.custom?.task;
     const duration = item.custom?.duration ?? 0;
+    const isInRange = item.custom?.isInTimeRange !== false;
 
     if (!stats[taskType]) {
       stats[taskType] = {
         totalDuration: 0,
-        count: 0
+        totalDurationOutOfRange: 0,
+        count: 0,
+        countOutOfRange: 0
       };
     }
 
-    stats[taskType].totalDuration += duration;
-    stats[taskType].count++;
+    if (isInRange) {
+      stats[taskType].totalDuration += duration;
+      stats[taskType].count++;
+    } else {
+      stats[taskType].totalDurationOutOfRange += duration;
+      stats[taskType].countOutOfRange++;
+    }
   });
-
-  if (process.dev) {
-    console.log('Task type stats:', stats);
-  }
 
   return stats;
 });
@@ -85,10 +89,21 @@ const totalDuration = computed(() => {
   if (!filteredLegendItems.value.length) return '0.00';
 
   const totalNanoseconds = filteredLegendItems.value.reduce((sum, item) => {
-    return sum + (item.custom?.duration ?? 0);
+    if (item.custom?.isInTimeRange !== false) {
+      return sum + (item.custom?.duration ?? 0);
+    }
+    return sum;
   }, 0);
 
   return formatDuration(totalNanoseconds);
+});
+
+const totalTasksInRange = computed(() => {
+  return filteredLegendItems.value.filter(item => item.custom?.isInTimeRange !== false).length;
+});
+
+const totalTasksOutOfRange = computed(() => {
+  return filteredLegendItems.value.filter(item => item.custom?.isInTimeRange === false).length;
 });
 
 const clearAllFilters = () => {
@@ -122,14 +137,20 @@ const clearAllFilters = () => {
         <div v-if="filteredLegendItems.length > 0"
           class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[350px] overflow-y-auto custom-scrollbar">
           <div v-for="(task, i) in filteredLegendItems" :key="i"
-            class="hover:bg-[#223c4a] rounded-xl transition-colors p-3 border border-white" :class="{
+            class="hover:bg-[#223c4a] rounded-xl transition-colors p-3 border border-white" 
+            :class="{
               'border-t': i === 0,
-              'border-b': i === filteredLegendItems.length - 1
-            }" style="background-color: #1E3D38;">
+              'border-b': i === filteredLegendItems.length - 1,
+              'opacity-60': task.custom?.isInTimeRange === false
+            }" 
+            style="background-color: #1E3D38;">
             <div class="flex items-center gap-2 mb-2">
               <div class="w-3 h-3 rounded flex-shrink-0" :style="{ backgroundColor: task.backgroundColor }" />
               <h4 class="text-sm font-medium truncate text-[#A3E635]">
                 {{ task.y }}
+                <span v-if="task.custom?.isInTimeRange === false" class="text-orange-400 text-xs ml-1">
+                  (Outside range)
+                </span>
               </h4>
             </div>
             <div class="text-xs text-[#A3E635] opacity-80">
@@ -146,17 +167,27 @@ const clearAllFilters = () => {
               <div v-for="(stats, taskType) in taskTypeStats" :key="taskType" class="bg-[#223c4a] rounded-lg p-2">
                 <div class="flex justify-between items-center">
                   <span class="text-xs font-medium text-[#A3E635]">{{ taskType }}</span>
-                  <span class="text-xs text-[#A3E635] opacity-80">({{ stats.count }})</span>
+                  <span class="text-xs text-[#A3E635] opacity-80">
+                    ({{ stats.count }}<span v-if="stats.countOutOfRange > 0" class="text-orange-400">+{{ stats.countOutOfRange }}</span>)
+                  </span>
                 </div>
                 <div class="text-sm text-[#A3E635] font-semibold">
                   {{ formatDuration(stats.totalDuration) }}
+                </div>
+                <div v-if="stats.countOutOfRange > 0" class="text-xs text-orange-400">
+                  + {{ formatDuration(stats.totalDurationOutOfRange) }} outside range
                 </div>
               </div>
             </div>
           </div>
 
           <div class="flex justify-between text-sm text-[#A3E635] pt-2 border-t border-white">
-            <span>{{ filteredLegendItems.length }} tasks total</span>
+            <span>
+              {{ totalTasksInRange }} tasks in range
+              <span v-if="totalTasksOutOfRange > 0" class="text-orange-400">
+                (+ {{ totalTasksOutOfRange }} outside)
+              </span>
+            </span>
             <span>Total Duration: {{ totalDuration }}</span>
           </div>
         </div>
